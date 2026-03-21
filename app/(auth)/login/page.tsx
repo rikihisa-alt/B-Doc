@@ -38,8 +38,13 @@ export default function LoginPage() {
 
       router.push('/dashboard')
       router.refresh()
-    } catch {
-      setError('ログイン中にエラーが発生しました')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'ログイン中にエラーが発生しました'
+      if (msg.includes('Supabase')) {
+        setError('Supabaseの接続情報が設定されていません。管理者にお問い合わせください。')
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }

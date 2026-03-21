@@ -5,13 +5,29 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PATHS = ['/login']
 
 export async function middleware(request: NextRequest) {
+  // Supabase環境変数が未設定の場合はスキップ（ログイン画面を表示可能にする）
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'https://xxxx.supabase.co') {
+    const isPublicPath = PUBLIC_PATHS.some((path) =>
+      request.nextUrl.pathname.startsWith(path)
+    )
+    if (!isPublicPath) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
