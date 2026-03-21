@@ -25,7 +25,8 @@ export async function createServerClient() {
       }),
       rpc: async () => ({ data: null, error: null }),
     }
-    return dummy as ReturnType<typeof createSSRServerClient>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return dummy as any
   }
 
   const cookieStore = await cookies()

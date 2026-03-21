@@ -29,7 +29,8 @@ export function createClient() {
       rpc: async () => ({ data: null, error: null }),
       storage: { from: () => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }) }) },
     }
-    return dummy as ReturnType<typeof createBrowserClient>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return dummy as any
   }
 
   return createBrowserClient(url, key)
