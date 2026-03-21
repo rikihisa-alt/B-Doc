@@ -1,5 +1,5 @@
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 import Link from 'next/link'
-import { createServerClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { StatusBadge } from '@/components/document/status-badge'
@@ -35,33 +35,98 @@ interface SearchParams {
   order?: 'asc' | 'desc'
 }
 
+// ---------- デモデータ ----------
+const demoDocuments = [
+  {
+    id: 'demo-001',
+    document_number: 'DOC-2024-0001',
+    title: '在職証明書（田中 太郎）',
+    document_type: 'employment_certificate',
+    status: 'issued' as DocumentStatus,
+    created_at: '2024-12-01T10:00:00Z',
+    created_by: 'user-001',
+    recipient: { name: '田中 太郎' },
+  },
+  {
+    id: 'demo-002',
+    document_number: 'DOC-2024-0002',
+    title: '給与証明書（鈴木 花子）',
+    document_type: 'salary_certificate',
+    status: 'pending_approval' as DocumentStatus,
+    created_at: '2024-12-05T14:30:00Z',
+    created_by: 'user-002',
+    recipient: { name: '鈴木 花子' },
+  },
+  {
+    id: 'demo-003',
+    document_number: 'DOC-2024-0003',
+    title: '退職証明書（佐藤 健一）',
+    document_type: 'retirement_certificate',
+    status: 'draft' as DocumentStatus,
+    created_at: '2024-12-10T09:15:00Z',
+    created_by: 'user-001',
+    recipient: { name: '佐藤 健一' },
+  },
+  {
+    id: 'demo-004',
+    document_number: 'DOC-2024-0004',
+    title: '在職証明書（山田 美咲）',
+    document_type: 'employment_certificate',
+    status: 'pending_confirm' as DocumentStatus,
+    created_at: '2024-12-12T11:00:00Z',
+    created_by: 'user-003',
+    recipient: { name: '山田 美咲' },
+  },
+  {
+    id: 'demo-005',
+    document_number: 'DOC-2024-0005',
+    title: '給与証明書（高橋 翔太）',
+    document_type: 'salary_certificate',
+    status: 'returned' as DocumentStatus,
+    created_at: '2024-12-15T16:45:00Z',
+    created_by: 'user-002',
+    recipient: { name: '高橋 翔太' },
+  },
+  {
+    id: 'demo-006',
+    document_number: 'DOC-2024-0006',
+    title: '在職証明書（渡辺 真理）',
+    document_type: 'employment_certificate',
+    status: 'sent' as DocumentStatus,
+    created_at: '2024-12-18T08:30:00Z',
+    created_by: 'user-001',
+    recipient: { name: '渡辺 真理' },
+  },
+  {
+    id: 'demo-007',
+    document_number: 'DOC-2024-0007',
+    title: '退職証明書（伊藤 大輔）',
+    document_type: 'retirement_certificate',
+    status: 'approved' as DocumentStatus,
+    created_at: '2024-12-20T13:20:00Z',
+    created_by: 'user-003',
+    recipient: { name: '伊藤 大輔' },
+  },
+]
+
+const demoOrgUsers = [
+  { id: 'user-001', display_name: '管理者 太郎' },
+  { id: 'user-002', display_name: '総務部 花子' },
+  { id: 'user-003', display_name: '人事部 次郎' },
+]
+
 /**
  * 文書一覧ページ（Server Component）
  * フィルタバー・一括操作・ソータブルテーブル・ページネーション
  */
-export default async function DocumentsPage({
-  searchParams,
+export default function DocumentsPage({
+  searchParams: _searchParams,
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const params = await searchParams
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // ユーザープロフィール取得（ロール判定用）
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('organization_id, roles')
-    .eq('id', user?.id ?? '')
-    .single()
-
-  // 同一組織のユーザー一覧（作成者フィルタ用）
-  const { data: orgUsers } = await supabase
-    .from('user_profiles')
-    .select('id, display_name')
-    .eq('organization_id', profile?.organization_id ?? '')
-    .eq('is_active', true)
-    .order('display_name')
+  const params: SearchParams = {}
+  const documents = demoDocuments
+  const orgUsers = demoOrgUsers
 
   // ページ番号（1始まり）
   const currentPage = Math.max(1, parseInt(params.page ?? '1', 10))
@@ -71,56 +136,7 @@ export default async function DocumentsPage({
   const sortField = params.sort ?? 'created_at'
   const sortOrder = params.order ?? 'desc'
 
-  // ---------- クエリ構築 ----------
-  let query = supabase
-    .from('documents')
-    .select(
-      'id, document_number, title, document_type, status, created_at, created_by, recipient',
-      { count: 'exact' }
-    )
-
-  // フィルタ: 文書番号（前方一致）
-  if (params.doc_number) {
-    query = query.ilike('document_number', `${params.doc_number}%`)
-  }
-
-  // フィルタ: 名前・会社名（タイトル or recipient->name）
-  if (params.q) {
-    query = query.or(
-      `title.ilike.%${params.q}%,recipient->>name.ilike.%${params.q}%`
-    )
-  }
-
-  // フィルタ: ステータス
-  if (params.status) {
-    query = query.eq('status', params.status)
-  }
-
-  // フィルタ: 文書種別
-  if (params.document_type) {
-    query = query.eq('document_type', params.document_type)
-  }
-
-  // フィルタ: 日付範囲
-  if (params.date_from) {
-    query = query.gte('created_at', `${params.date_from}T00:00:00`)
-  }
-  if (params.date_to) {
-    query = query.lte('created_at', `${params.date_to}T23:59:59`)
-  }
-
-  // フィルタ: 作成者
-  if (params.created_by) {
-    query = query.eq('created_by', params.created_by)
-  }
-
-  // ソート・ページネーション
-  query = query
-    .order(sortField, { ascending: sortOrder === 'asc' })
-    .range(offset, offset + PAGE_SIZE - 1)
-
-  const { data: documents, count } = await query
-  const totalCount = count ?? 0
+  const totalCount = documents.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   // 作成者名のマッピング
@@ -150,7 +166,7 @@ export default async function DocumentsPage({
   function sortIndicator(field: string): string {
     if (params.sort !== field && !(field === 'created_at' && !params.sort))
       return ''
-    return sortOrder === 'asc' ? ' \u2191' : ' \u2193'
+    return sortOrder === 'asc' ? ' ↑' : ' ↓'
   }
 
   // ステータスオプション（STATUS_BADGE_MAPから生成）

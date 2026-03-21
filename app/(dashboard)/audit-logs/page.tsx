@@ -1,5 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,17 +12,10 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import Link from 'next/link'
-import { AUDIT_OPERATIONS } from '@/types'
 import { AuditLogExpandableRow } from './audit-log-expandable-row'
 
 // =============================================================================
-// 監査ログビューア（Server Component）
-// S-M11 仕様準拠:
-// - 警告バナー: "このログは改ざん不能です"
-// - フィルター: 操作種別、ユーザー、対象種別、日付範囲、成功/失敗
-// - テーブル: 日時、ユーザー、操作、対象、成功(check/x)
-// - 行クリック → 展開: before/after JSON, IP, User Agent
-// - CSV エクスポートボタン
+// 監査ログビューア（デモデータ版）
 // =============================================================================
 
 /** 操作種別の日本語ラベル */
@@ -65,100 +57,136 @@ interface SearchParams {
   page?: string
 }
 
-export default async function AuditLogsPage({
-  searchParams,
+// ---------- デモデータ ----------
+const demoLogs = [
+  {
+    id: 'log-001',
+    operation: 'create',
+    target_table: 'documents',
+    target_id: 'doc-001',
+    performed_by: 'user-001',
+    old_values: null,
+    new_values: { status: 'draft', title: '在職証明書（田中 太郎）' },
+    ip_address: '192.168.1.10',
+    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    created_at: '2024-12-20T09:00:00Z',
+    user_profiles: { display_name: '管理者 太郎', email: 'taro@example.com' },
+  },
+  {
+    id: 'log-002',
+    operation: 'status_change',
+    target_table: 'documents',
+    target_id: 'doc-001',
+    performed_by: 'user-001',
+    old_values: { status: 'draft' },
+    new_values: { status: 'pending_confirm' },
+    ip_address: '192.168.1.10',
+    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    created_at: '2024-12-20T09:30:00Z',
+    user_profiles: { display_name: '管理者 太郎', email: 'taro@example.com' },
+  },
+  {
+    id: 'log-003',
+    operation: 'approve',
+    target_table: 'approval_records',
+    target_id: 'apr-001',
+    performed_by: 'user-002',
+    old_values: null,
+    new_values: { action: 'confirm', comment: '確認しました' },
+    ip_address: '192.168.1.20',
+    user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    created_at: '2024-12-20T14:30:00Z',
+    user_profiles: { display_name: '総務部 花子', email: 'hanako@example.com' },
+  },
+  {
+    id: 'log-004',
+    operation: 'update',
+    target_table: 'templates',
+    target_id: 'tpl-001',
+    performed_by: 'user-001',
+    old_values: { name: '在職証明書テンプレート v1' },
+    new_values: { name: '在職証明書テンプレート v2' },
+    ip_address: '192.168.1.10',
+    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    created_at: '2024-12-19T16:00:00Z',
+    user_profiles: { display_name: '管理者 太郎', email: 'taro@example.com' },
+  },
+  {
+    id: 'log-005',
+    operation: 'login',
+    target_table: 'user_profiles',
+    target_id: 'user-003',
+    performed_by: 'user-003',
+    old_values: null,
+    new_values: { last_login_at: '2024-12-19T08:00:00Z' },
+    ip_address: '10.0.0.5',
+    user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)',
+    created_at: '2024-12-19T08:00:00Z',
+    user_profiles: { display_name: '人事部 次郎', email: 'jiro@example.com' },
+  },
+  {
+    id: 'log-006',
+    operation: 'issue',
+    target_table: 'documents',
+    target_id: 'doc-005',
+    performed_by: 'user-001',
+    old_values: { status: 'approved' },
+    new_values: { status: 'issued', issued_date: '2024-12-18T15:00:00Z' },
+    ip_address: '192.168.1.10',
+    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    created_at: '2024-12-18T15:00:00Z',
+    user_profiles: { display_name: '管理者 太郎', email: 'taro@example.com' },
+  },
+  {
+    id: 'log-007',
+    operation: 'download',
+    target_table: 'documents',
+    target_id: 'doc-005',
+    performed_by: 'user-002',
+    old_values: null,
+    new_values: { format: 'pdf' },
+    ip_address: '192.168.1.20',
+    user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    created_at: '2024-12-18T15:30:00Z',
+    user_profiles: { display_name: '総務部 花子', email: 'hanako@example.com' },
+  },
+  {
+    id: 'log-008',
+    operation: 'send',
+    target_table: 'documents',
+    target_id: 'doc-005',
+    performed_by: 'user-001',
+    old_values: { status: 'issued' },
+    new_values: { status: 'sent', delivery_method: 'email' },
+    ip_address: '192.168.1.10',
+    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    created_at: '2024-12-18T16:00:00Z',
+    user_profiles: { display_name: '管理者 太郎', email: 'taro@example.com' },
+  },
+]
+
+const demoOrgUsers = [
+  { id: 'user-001', display_name: '管理者 太郎', email: 'taro@example.com' },
+  { id: 'user-002', display_name: '総務部 花子', email: 'hanako@example.com' },
+  { id: 'user-003', display_name: '人事部 次郎', email: 'jiro@example.com' },
+]
+
+export default function AuditLogsPage({
+  searchParams: _searchParams,
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
-  }
-
-  // ユーザーの権限を確認（system_admin, audit_viewer のみアクセス可能）
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('roles, organization_id')
-    .eq('id', user.id)
-    .single()
-
-  const userRoles: string[] = profile?.roles ?? []
-  const hasAccess =
-    userRoles.includes('system_admin') || userRoles.includes('audit_viewer')
-
-  if (!hasAccess) {
-    redirect('/dashboard')
-  }
-
-  const params = await searchParams
-  const currentPage = parseInt(params.page ?? '1', 10)
+  const params: SearchParams = {}
+  const logs = demoLogs
+  const orgUsers = demoOrgUsers
+  const count = logs.length
+  const currentPage = 1
   const pageSize = 25
-  const offset = (currentPage - 1) * pageSize
-
-  // 監査ログのクエリ構築
-  let query = supabase
-    .from('audit_logs')
-    .select(
-      `
-      id,
-      operation,
-      target_table,
-      target_id,
-      performed_by,
-      old_values,
-      new_values,
-      ip_address,
-      user_agent,
-      created_at,
-      user_profiles!audit_logs_performed_by_fkey (
-        display_name,
-        email
-      )
-    `,
-      { count: 'exact' }
-    )
-    .eq('organization_id', profile!.organization_id)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + pageSize - 1)
-
-  // フィルター適用
-  if (params.operation) {
-    query = query.eq('operation', params.operation)
-  }
-  if (params.user_id) {
-    query = query.eq('performed_by', params.user_id)
-  }
-  if (params.target_table) {
-    query = query.eq('target_table', params.target_table)
-  }
-  if (params.date_from) {
-    query = query.gte('created_at', params.date_from)
-  }
-  if (params.date_to) {
-    query = query.lte('created_at', `${params.date_to}T23:59:59`)
-  }
-
-  const { data: logs, count, error } = await query
-  const totalPages = Math.ceil((count ?? 0) / pageSize)
-
-  // 組織内のユーザー一覧（フィルター用）
-  const { data: orgUsers } = await supabase
-    .from('user_profiles')
-    .select('id, display_name, email')
-    .eq('organization_id', profile!.organization_id)
-    .order('display_name')
+  const offset = 0
+  const totalPages = 1
 
   // CSVエクスポートURL構築
   const exportParams = new URLSearchParams()
-  if (params.operation) exportParams.set('operation', params.operation)
-  if (params.user_id) exportParams.set('user_id', params.user_id)
-  if (params.target_table) exportParams.set('target_table', params.target_table)
-  if (params.date_from) exportParams.set('date_from', params.date_from)
-  if (params.date_to) exportParams.set('date_to', params.date_to)
   const exportUrl = `/api/audit-logs/export?${exportParams.toString()}`
 
   return (
@@ -311,17 +339,6 @@ export default async function AuditLogsPage({
           </form>
         </CardContent>
       </Card>
-
-      {/* エラー表示 */}
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4">
-            <p className="text-sm text-red-700">
-              データの取得に失敗しました: {error.message}
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* ログテーブル */}
       <Card>

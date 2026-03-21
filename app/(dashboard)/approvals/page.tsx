@@ -1,5 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,11 +11,7 @@ import {
 import { DOCUMENT_TYPE_LABELS } from '@/types'
 
 // =============================================================================
-// 承認一覧ページ（Server Component）
-// 現在のユーザーに割り当てられた承認待ちタスクを一覧表示する
-// - テーブル: 文書タイトル、種別、申請者、提出日、期限緊急度、ステップ情報
-// - 期限24h以内: amber、超過: red ハイライト
-// - 行クリック → /dashboard/approvals/[id]
+// 承認一覧ページ（デモデータ版）
 // =============================================================================
 
 /** 期限の緊急度を判定するヘルパー */
@@ -76,57 +71,64 @@ function DeadlineBadge({ deadline }: { deadline: string | null }) {
   }
 }
 
-export default async function ApprovalsPage() {
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+// ---------- デモデータ ----------
+const demoPendingApprovals = [
+  {
+    id: 'apr-001',
+    document_id: 'doc-001',
+    step_order: 2,
+    created_at: '2024-12-18T09:00:00Z',
+    documents: {
+      id: 'doc-001',
+      title: '在職証明書（田中 太郎）',
+      document_number: 'DOC-2024-0001',
+      status: 'pending_approval',
+      expiry_date: null,
+      created_at: '2024-12-15T10:00:00Z',
+      templates: { document_type: 'employment_certificate' },
+      user_profiles: { display_name: '総務部 花子', email: 'hanako@example.com', department: '総務部' },
+    },
+    workflow_steps: { name: '部長承認', deadline_hours: 72 },
+  },
+  {
+    id: 'apr-002',
+    document_id: 'doc-002',
+    step_order: 1,
+    created_at: '2024-12-19T14:00:00Z',
+    documents: {
+      id: 'doc-002',
+      title: '給与証明書（鈴木 花子）',
+      document_number: 'DOC-2024-0002',
+      status: 'pending_confirm',
+      expiry_date: '2024-12-20T23:59:59Z',
+      created_at: '2024-12-19T10:00:00Z',
+      templates: { document_type: 'salary_certificate' },
+      user_profiles: { display_name: '人事部 次郎', email: 'jiro@example.com', department: '人事部' },
+    },
+    workflow_steps: { name: '確認', deadline_hours: 24 },
+  },
+  {
+    id: 'apr-003',
+    document_id: 'doc-003',
+    step_order: 2,
+    created_at: '2024-12-17T11:00:00Z',
+    documents: {
+      id: 'doc-003',
+      title: '退職証明書（佐藤 健一）',
+      document_number: 'DOC-2024-0003',
+      status: 'pending_approval',
+      expiry_date: null,
+      created_at: '2024-12-16T08:30:00Z',
+      templates: { document_type: 'retirement_certificate' },
+      user_profiles: { display_name: '管理者 太郎', email: 'taro@example.com', department: '管理部' },
+    },
+    workflow_steps: { name: '最終承認', deadline_hours: 48 },
+  },
+]
 
-  if (!user) {
-    redirect('/login')
-  }
-
-  // ユーザーに関連する承認待ちタスクを取得
-  // approval_records テーブルから pending 状態のものを文書情報付きで取得
-  const { data: pendingApprovals, error } = await supabase
-    .from('approval_records')
-    .select(
-      `
-      id,
-      document_id,
-      workflow_step_id,
-      step_order,
-      action,
-      created_at,
-      documents (
-        id,
-        title,
-        document_number,
-        status,
-        expiry_date,
-        created_by,
-        created_at,
-        templates (
-          document_type
-        ),
-        user_profiles!documents_created_by_fkey (
-          display_name,
-          email,
-          department
-        )
-      ),
-      workflow_steps:workflow_step_id (
-        name,
-        deadline_hours
-      )
-    `
-    )
-    .eq('approver_id', user.id)
-    .is('acted_at', null)
-    .order('created_at', { ascending: false })
-
-  // 承認待ち件数
-  const pendingCount = pendingApprovals?.length ?? 0
+export default function ApprovalsPage() {
+  const pendingApprovals = demoPendingApprovals
+  const pendingCount = pendingApprovals.length
 
   return (
     <div className="space-y-6">
@@ -144,17 +146,6 @@ export default async function ApprovalsPage() {
           あなたに割り当てられた承認待ちタスク
         </p>
       </div>
-
-      {/* エラー表示 */}
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4">
-            <p className="text-sm text-red-700">
-              データの取得に失敗しました: {error.message}
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* 承認待ちテーブル */}
       <Card>

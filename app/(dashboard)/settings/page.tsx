@@ -1,5 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -17,30 +16,31 @@ import Link from 'next/link'
 import { USER_ROLE_LABELS } from '@/types'
 
 // =============================================================================
-// 設定ページ（Server Component）
-// - ユーザープロフィールセクション
-// - 組織設定（管理者のみ）
-// - 各種サブ設定へのクイックリンク
+// 設定ページ（デモデータ版）
 // =============================================================================
 
-export default async function SettingsPage() {
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+// ---------- デモデータ ----------
+const demoProfile = {
+  display_name: '管理者 太郎',
+  email: 'taro@backlly.example.com',
+  department: '人事部',
+  position: '主任',
+  roles: ['system_admin', 'document_issuer'],
+  last_login_at: '2024-12-20T09:00:00Z',
+}
 
-  if (!user) {
-    redirect('/login')
-  }
+const demoOrganization = {
+  name: '株式会社Backlly',
+  slug: 'backlly',
+  plan: 'business',
+  created_at: '2024-01-15T00:00:00Z',
+}
 
-  // プロフィールと組織情報を取得
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('*, organizations(*)')
-    .eq('id', user.id)
-    .single()
+const demoUserId = 'demo-user-001'
 
-  const organization = profile?.organizations as Record<string, unknown> | null
+export default function SettingsPage() {
+  const profile = demoProfile
+  const organization = demoOrganization
   const userRoles: string[] = profile?.roles ?? []
   const isAdmin = userRoles.includes('system_admin')
 
@@ -83,7 +83,7 @@ export default async function SettingsPage() {
                 メールアドレス
               </p>
               <p className="mt-1.5 text-sm text-slate-900">
-                {profile?.email ?? user.email ?? '未設定'}
+                {profile?.email ?? '未設定'}
               </p>
             </div>
 
@@ -149,7 +149,7 @@ export default async function SettingsPage() {
                 ユーザーID
               </p>
               <code className="mt-1.5 block rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">
-                {user.id}
+                {demoUserId}
               </code>
             </div>
           </div>

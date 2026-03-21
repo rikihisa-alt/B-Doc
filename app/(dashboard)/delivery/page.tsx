@@ -1,5 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,10 +15,7 @@ import Link from 'next/link'
 import { DOCUMENT_TYPE_LABELS, STATUS_BADGE_MAP } from '@/types'
 
 // =============================================================================
-// 送付管理ページ（Server Component）
-// - 発行済み文書の送付状況一覧
-// - メール送信 / 郵送記録
-// - 受領確認トラッキング
+// 送付管理ページ（デモデータ版）
 // =============================================================================
 
 /** 送付ステータスの判定 */
@@ -60,50 +56,69 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   }
 }
 
-export default async function DeliveryPage() {
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+// ---------- デモデータ ----------
+const demoDocuments = [
+  {
+    id: 'doc-001',
+    document_number: 'DOC-2024-0001',
+    title: '在職証明書（田中 太郎）',
+    status: 'issued',
+    issued_date: '2024-12-18T10:00:00Z',
+    recipient: { name: '田中 太郎', email: 'tanaka@example.com' },
+    created_at: '2024-12-15T10:00:00Z',
+    updated_at: '2024-12-18T10:00:00Z',
+    templates: { document_type: 'employment_certificate' },
+    user_profiles: { display_name: '管理者 太郎', email: 'admin@example.com' },
+  },
+  {
+    id: 'doc-002',
+    document_number: 'DOC-2024-0006',
+    title: '在職証明書（渡辺 真理）',
+    status: 'sent',
+    issued_date: '2024-12-16T14:00:00Z',
+    recipient: { name: '渡辺 真理', email: 'watanabe@example.com' },
+    created_at: '2024-12-14T09:00:00Z',
+    updated_at: '2024-12-17T11:00:00Z',
+    templates: { document_type: 'employment_certificate' },
+    user_profiles: { display_name: '管理者 太郎', email: 'admin@example.com' },
+  },
+  {
+    id: 'doc-003',
+    document_number: 'DOC-2024-0005',
+    title: '給与証明書（高橋 翔太）',
+    status: 'issued',
+    issued_date: '2024-12-19T16:00:00Z',
+    recipient: { name: '高橋 翔太', email: 'takahashi@example.com' },
+    created_at: '2024-12-17T13:00:00Z',
+    updated_at: '2024-12-19T16:00:00Z',
+    templates: { document_type: 'salary_certificate' },
+    user_profiles: { display_name: '総務部 花子', email: 'hanako@example.com' },
+  },
+  {
+    id: 'doc-004',
+    document_number: 'DOC-2024-0008',
+    title: '退職証明書（伊藤 大輔）',
+    status: 'sent',
+    issued_date: '2024-12-15T09:00:00Z',
+    recipient: { name: '伊藤 大輔', email: 'ito@example.com' },
+    created_at: '2024-12-12T10:00:00Z',
+    updated_at: '2024-12-16T15:30:00Z',
+    templates: { document_type: 'retirement_certificate' },
+    user_profiles: { display_name: '人事部 次郎', email: 'jiro@example.com' },
+  },
+]
 
-  if (!user) {
-    redirect('/login')
-  }
-
-  // 発行済み・送付済みの文書を取得
-  const { data: documents, error } = await supabase
-    .from('documents')
-    .select(
-      `
-      id,
-      document_number,
-      title,
-      status,
-      issued_date,
-      recipient,
-      created_at,
-      updated_at,
-      templates (
-        document_type
-      ),
-      user_profiles!documents_created_by_fkey (
-        display_name,
-        email
-      )
-    `
-    )
-    .in('status', ['issued', 'sent'])
-    .order('updated_at', { ascending: false })
-    .limit(50)
+export default function DeliveryPage() {
+  const documents = demoDocuments
 
   // 集計
-  const pendingCount =
-    documents?.filter((d: Record<string, unknown>) => d.status === 'issued')
-      .length ?? 0
-  const sentCount =
-    documents?.filter((d: Record<string, unknown>) => d.status === 'sent')
-      .length ?? 0
-  const totalCount = documents?.length ?? 0
+  const pendingCount = documents.filter(
+    (d: Record<string, unknown>) => d.status === 'issued'
+  ).length
+  const sentCount = documents.filter(
+    (d: Record<string, unknown>) => d.status === 'sent'
+  ).length
+  const totalCount = documents.length
 
   return (
     <div className="space-y-6">
@@ -156,17 +171,6 @@ export default async function DeliveryPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* エラー表示 */}
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4">
-            <p className="text-sm text-red-700">
-              データの取得に失敗しました: {error.message}
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* 文書テーブル */}
       <Card>

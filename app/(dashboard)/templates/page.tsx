@@ -1,5 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,12 +15,7 @@ import Link from 'next/link'
 import { DOCUMENT_TYPE_LABELS } from '@/types'
 
 // =============================================================================
-// テンプレート一覧ページ（Server Component）
-// プロフェッショナルなテーブルレイアウト:
-// - カラム: テンプレート名、文書種別、ステータス(draft/active/archived)、
-//   バージョン数、作成日
-// - 操作: 編集、新バージョン、アーカイブ
-// - 「新規テンプレート」ボタン
+// テンプレート一覧ページ（デモデータ版）
 // =============================================================================
 
 /** ステータスバッジの表示 */
@@ -51,42 +45,66 @@ function TemplateStatusBadge({ status }: { status: string }) {
   }
 }
 
-export default async function TemplatesPage() {
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+// ---------- デモデータ ----------
+const demoTemplates = [
+  {
+    id: 'tpl-001',
+    name: '在職証明書テンプレート',
+    document_type: 'employment_certificate',
+    description: '在職中の従業員向け証明書のテンプレートです',
+    is_published: true,
+    created_by: 'user-001',
+    created_at: '2024-10-01T09:00:00Z',
+    updated_at: '2024-12-15T14:00:00Z',
+    deleted_at: null,
+  },
+  {
+    id: 'tpl-002',
+    name: '給与証明書テンプレート',
+    document_type: 'salary_certificate',
+    description: '給与額を証明するためのテンプレートです',
+    is_published: true,
+    created_by: 'user-001',
+    created_at: '2024-10-05T10:00:00Z',
+    updated_at: '2024-12-10T11:00:00Z',
+    deleted_at: null,
+  },
+  {
+    id: 'tpl-003',
+    name: '退職証明書テンプレート',
+    document_type: 'retirement_certificate',
+    description: '退職者向けの退職証明書テンプレートです',
+    is_published: false,
+    created_by: 'user-002',
+    created_at: '2024-11-20T15:00:00Z',
+    updated_at: '2024-12-01T09:30:00Z',
+    deleted_at: null,
+  },
+  {
+    id: 'tpl-004',
+    name: '源泉徴収票テンプレート',
+    document_type: 'withholding_certificate',
+    description: '年末調整用の源泉徴収票テンプレート',
+    is_published: true,
+    created_by: 'user-001',
+    created_at: '2024-09-15T08:00:00Z',
+    updated_at: '2024-11-30T16:00:00Z',
+    deleted_at: null,
+  },
+]
 
-  if (!user) {
-    redirect('/login')
-  }
+const demoVersionCountMap: Record<string, number> = {
+  'tpl-001': 3,
+  'tpl-002': 2,
+  'tpl-003': 1,
+  'tpl-004': 4,
+}
 
-  // テンプレート一覧を取得
-  const { data: templates, error } = await supabase
-    .from('templates')
-    .select(
-      'id, name, document_type, description, is_published, created_by, created_at, updated_at, deleted_at'
-    )
-    .is('deleted_at', null)
-    .order('updated_at', { ascending: false })
+export default function TemplatesPage() {
+  const templates = demoTemplates
+  const versionCountMap = demoVersionCountMap
 
-  // 各テンプレートのバージョン数を取得
-  const templateIds = (templates ?? []).map((t: { id: string }) => t.id)
-  const { data: versionRows } =
-    templateIds.length > 0
-      ? await supabase
-          .from('template_versions')
-          .select('template_id')
-          .in('template_id', templateIds)
-      : { data: [] }
-
-  // テンプレートIDごとのバージョン数を集計
-  const versionCountMap: Record<string, number> = {}
-  ;(versionRows ?? []).forEach((v: { template_id: string }) => {
-    versionCountMap[v.template_id] = (versionCountMap[v.template_id] ?? 0) + 1
-  })
-
-  /** ステータスを判定: is_published + deleted_at から推定 */
+  /** ステータスを判定 */
   const getStatus = (template: Record<string, unknown>): string => {
     if (template.deleted_at) return 'archived'
     if (template.is_published) return 'active'
@@ -94,15 +112,13 @@ export default async function TemplatesPage() {
   }
 
   // 集計情報
-  const totalCount = templates?.length ?? 0
-  const activeCount =
-    templates?.filter(
-      (t: Record<string, unknown>) => getStatus(t) === 'active'
-    ).length ?? 0
-  const draftCount =
-    templates?.filter(
-      (t: Record<string, unknown>) => getStatus(t) === 'draft'
-    ).length ?? 0
+  const totalCount = templates.length
+  const activeCount = templates.filter(
+    (t: Record<string, unknown>) => getStatus(t) === 'active'
+  ).length
+  const draftCount = templates.filter(
+    (t: Record<string, unknown>) => getStatus(t) === 'draft'
+  ).length
 
   return (
     <div className="space-y-6">
@@ -160,38 +176,6 @@ export default async function TemplatesPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* エラー表示 */}
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4">
-            <p className="text-sm text-red-700">
-              テンプレートの取得に失敗しました: {error.message}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* テンプレートが無い場合 */}
-      {!error && (!templates || templates.length === 0) && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <FileText className="mb-4 h-12 w-12 text-slate-200" />
-            <p className="text-sm font-medium text-slate-500">
-              テンプレートがまだありません
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              最初のテンプレートを作成して文書発行を開始しましょう
-            </p>
-            <Button asChild variant="outline" className="mt-4">
-              <Link href="/dashboard/templates/new">
-                <Plus className="mr-2 h-4 w-4" />
-                最初のテンプレートを作成
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
 
       {/* テンプレート一覧テーブル */}
       {templates && templates.length > 0 && (

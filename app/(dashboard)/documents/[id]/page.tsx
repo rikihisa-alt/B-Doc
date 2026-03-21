@@ -1,12 +1,11 @@
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 // =============================================================================
-// B-Doc 文書詳細ページ（S-C04 準拠 / Server Component）
+// B-Doc 文書詳細ページ（デモデータ版）
 // 左カラム: 文書情報・プレビュー・承認履歴・添付資料・操作ログ
 // 右カラム: ワークフロー進行状況・次のアクション・操作ボタン
 // =============================================================================
 
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
-import { createServerClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -126,149 +125,113 @@ function getApprovalLabel(action: string) {
 }
 
 // =============================================================================
+// デモデータ
+// =============================================================================
+
+const demoDocument = {
+  id: 'demo-001',
+  document_number: 'DOC-2024-0001',
+  title: '在職証明書（田中 太郎）',
+  document_type: 'employment_certificate',
+  status: 'pending_approval' as DocumentStatus,
+  created_at: '2024-12-01T10:00:00Z',
+  created_by: 'user-001',
+  updated_by: 'user-001',
+  issued_date: null as string | null,
+  template_id: 'tpl-001',
+  template_version_id: 'tv-001',
+  recipient: { name: '田中 太郎' },
+  metadata: { target_name: '田中 太郎', confidentiality: '社外秘' },
+}
+
+const demoCreatorProfile = {
+  display_name: '管理者 太郎',
+  department: '人事部',
+  position: '主任',
+}
+
+const demoApprovals = [
+  {
+    id: 'apr-001',
+    step_order: 1,
+    action: 'confirm',
+    comment: '内容を確認しました。問題ありません。',
+    acted_at: '2024-12-02T14:30:00Z',
+    user_profiles: { display_name: '総務部 花子', position: '確認者' },
+  },
+  {
+    id: 'apr-002',
+    step_order: 2,
+    action: 'pending',
+    comment: null,
+    acted_at: null,
+    user_profiles: { display_name: '部長 三郎', position: '承認者' },
+  },
+]
+
+const demoAuditLogs = [
+  {
+    id: 'log-001',
+    created_at: '2024-12-01T10:00:00Z',
+    operation: 'create',
+    performed_by: 'user-001',
+    new_values: { status: 'draft' },
+  },
+  {
+    id: 'log-002',
+    created_at: '2024-12-01T10:30:00Z',
+    operation: 'status_change',
+    performed_by: 'user-001',
+    new_values: { status: 'pending_confirm' },
+  },
+  {
+    id: 'log-003',
+    created_at: '2024-12-02T14:30:00Z',
+    operation: 'approve',
+    performed_by: 'user-002',
+    new_values: { status: 'pending_approval' },
+  },
+]
+
+const demoProgressSteps = [
+  { label: '確認', status: 'completed' as const, actor: '総務部 花子', date: '2024/12/02 14:30' },
+  { label: '承認', status: 'current' as const, actor: undefined, date: undefined },
+  { label: '発行', status: 'pending' as const, actor: undefined, date: undefined },
+]
+
+const demoValuesMap: Record<string, string> = {
+  employee_name: '田中 太郎',
+  department: '開発部',
+  position: 'シニアエンジニア',
+  hire_date: '2020年4月1日',
+  company_name: '株式会社Backlly',
+}
+
+const demoBodyTemplate = '{{company_name}}に在籍していることを証明します。\n\n氏名: {{employee_name}}\n部署: {{department}}\n役職: {{position}}\n入社日: {{hire_date}}\n\n上記の者は、当社に在籍していることを証明いたします。'
+
+// =============================================================================
 // メインページコンポーネント
 // =============================================================================
 
-export default async function DocumentDetailPage({
-  params,
+export default function DocumentDetailPage({
+  params: _params,
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = await params
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // ---------- データ取得 ----------
-  // 文書本体
-  const { data: document, error } = await supabase
-    .from('documents')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (error || !document) {
-    notFound()
-  }
-
-  // 入力値
-  const { data: docValues } = await supabase
-    .from('document_values')
-    .select('*')
-    .eq('document_id', id)
-
-  // 承認履歴
-  const { data: approvals } = await supabase
-    .from('approval_records')
-    .select('*, user_profiles!approver_id(display_name, position)')
-    .eq('document_id', id)
-    .order('step_order', { ascending: true })
-
-  // 監査ログ（最新20件）
-  const { data: auditLogs } = await supabase
-    .from('audit_logs')
-    .select('*')
-    .eq('target_id', id)
-    .eq('target_table', 'documents')
-    .order('created_at', { ascending: false })
-    .limit(20)
-
-  // 作成者プロフィール
-  const { data: creatorProfile } = await supabase
-    .from('user_profiles')
-    .select('display_name, department, position')
-    .eq('id', document.created_by)
-    .single()
-
-  // テンプレートバージョン（プレビュー用）
-  const { data: templateVersion } = document.template_version_id
-    ? await supabase
-        .from('template_versions')
-        .select('body, variables')
-        .eq('id', document.template_version_id)
-        .single()
-    : { data: null }
-
-  // ワークフロー定義（ステップ表示用）
-  const { data: workflow } = await supabase
-    .from('workflow_definitions')
-    .select('steps')
-    .eq('target_template_id', document.template_id)
-    .eq('is_active', true)
-    .maybeSingle()
+  const id = 'demo-001'
+  const document = demoDocument
+  const approvals = demoApprovals
+  const auditLogs = demoAuditLogs
+  const creatorProfile = demoCreatorProfile
 
   // ---------- 派生値 ----------
   const status = document.status as DocumentStatus
   const badgeInfo = STATUS_BADGE_MAP[status]
-  const isOwner = user?.id === document.created_by
+  const isOwner = true
 
-  // 入力値をマップに変換
-  const valuesMap: Record<string, string> = {}
-  for (const dv of docValues ?? []) {
-    valuesMap[dv.variable_name] = dv.value
-  }
-
-  // テンプレート本文を組み立て
-  const bodyData = templateVersion?.body as { blocks?: { content: string; order?: number }[] } | null
-  const blocks = bodyData?.blocks ?? []
-  const bodyTemplate = blocks
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map((b) => b.content)
-    .join('\n\n')
-
-  // ワークフローステップの整形
-  const workflowSteps = (workflow?.steps as Array<{
-    id: string
-    name: string
-    order: number
-    type: string
-  }> | null) ?? []
-
-  const progressSteps = workflowSteps
-    .sort((a, b) => a.order - b.order)
-    .map((step) => {
-      const matchingApproval = (approvals ?? []).find(
-        (a: Record<string, unknown>) =>
-          a.workflow_step_id === step.id || a.step_order === step.order
-      )
-
-      let stepStatus: 'completed' | 'current' | 'pending' = 'pending'
-      if (matchingApproval && ['approve', 'approved', 'confirm'].includes(String(matchingApproval.action))) {
-        stepStatus = 'completed'
-      } else if (matchingApproval && ['reject', 'rejected', 'return', 'returned'].includes(String(matchingApproval.action))) {
-        stepStatus = 'completed'
-      } else if (
-        status === 'pending_confirm' && step.type === 'confirm' ||
-        status === 'pending_approval' && step.type === 'approve' ||
-        status === 'approved' && step.type === 'issue'
-      ) {
-        // 現在ステータスに対応するステップを current にする
-        const prevStepsCompleted = workflowSteps
-          .filter((s) => s.order < step.order)
-          .every((s) =>
-            (approvals ?? []).some(
-              (a: Record<string, unknown>) =>
-                (a.workflow_step_id === s.id || a.step_order === s.order) &&
-                ['approve', 'approved', 'confirm'].includes(String(a.action))
-            )
-          )
-        if (prevStepsCompleted) {
-          stepStatus = 'current'
-        }
-      }
-
-      const profile = matchingApproval
-        ? (matchingApproval as Record<string, unknown>).user_profiles as { display_name: string } | null
-        : null
-
-      return {
-        label: step.name,
-        status: stepStatus,
-        actor: profile?.display_name,
-        date: matchingApproval?.acted_at
-          ? new Date(matchingApproval.acted_at as string).toLocaleString('ja-JP')
-          : undefined,
-      }
-    })
+  const valuesMap = demoValuesMap
+  const bodyTemplate = demoBodyTemplate
+  const progressSteps = demoProgressSteps
 
   // 機密レベルバッジ
   const confidentiality = (document.metadata as Record<string, unknown>)?.confidentiality as string | undefined
@@ -612,7 +575,7 @@ export default async function DocumentDetailPage({
                 documentNumber={document.document_number ?? ''}
                 status={status}
                 isOwner={isOwner}
-                userId={user?.id ?? ''}
+                userId={'demo-user-001'}
               />
             </CardContent>
           </Card>

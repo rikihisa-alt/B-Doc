@@ -1,5 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+// TODO: Supabase接続後にDBからデータ取得に切り替え
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -15,11 +14,7 @@ import type { ApprovalStep } from '@/components/workflow/approval-timeline'
 import { ApprovalExecutionPanel } from './approval-execution-panel'
 
 // =============================================================================
-// 承認実行ページ（Server Component + Client child）
-// S-A02 仕様準拠:
-// - ヘッダー: "承認依頼: 在職証明書（田中 太郎）" 形式
-// - 左パネル: A4プレビュー（再提出時はdiffハイライト）
-// - 右パネル: 承認条件チェック、承認/差戻しアクション、承認履歴
+// 承認実行ページ（デモデータ版）
 // =============================================================================
 
 /** 期限の緊急度を判定 */
@@ -37,155 +32,96 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-export default async function ApprovalDetailPage({ params }: PageProps) {
-  const { id } = await params
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+// ---------- デモデータ ----------
+const demoApproval = {
+  id: 'apr-001',
+  document_id: 'doc-001',
+  workflow_step_id: 'ws-002',
+  approver_id: 'user-approver',
+  step_order: 2,
+  action: null,
+  comment: null,
+  acted_at: null,
+  created_at: '2024-12-18T09:00:00Z',
+}
 
-  if (!user) {
-    redirect('/login')
-  }
+const demoDoc = {
+  id: 'doc-001',
+  title: '在職証明書（田中 太郎）',
+  document_number: 'DOC-2024-0001',
+  status: 'pending_approval',
+  expiry_date: null,
+  created_by: 'user-001',
+  created_at: '2024-12-15T10:00:00Z',
+  updated_at: '2024-12-18T09:00:00Z',
+  template_id: 'tpl-001',
+  template_version_id: 'tv-001',
+  metadata: { target_name: '田中 太郎' },
+}
 
-  // 承認レコードと関連データを取得
-  const { data: approval, error } = await supabase
-    .from('approval_records')
-    .select(
-      `
-      id,
-      document_id,
-      workflow_step_id,
-      approver_id,
-      step_order,
-      action,
-      comment,
-      acted_at,
-      created_at,
-      documents (
-        id,
-        title,
-        document_number,
-        status,
-        expiry_date,
-        created_by,
-        created_at,
-        updated_at,
-        template_id,
-        template_version_id,
-        metadata,
-        templates (
-          id,
-          name,
-          document_type
-        ),
-        template_versions (
-          id,
-          body,
-          variables,
-          layout,
-          version
-        ),
-        user_profiles!documents_created_by_fkey (
-          display_name,
-          email,
-          department,
-          position
-        )
-      )
-    `
-    )
-    .eq('id', id)
-    .single()
+const demoApplicant = {
+  display_name: '総務部 花子',
+  email: 'hanako@example.com',
+  department: '総務部',
+  position: '担当者',
+}
 
-  if (error || !approval) {
-    redirect('/dashboard/approvals')
-  }
+const demoDocumentTypeLabel = '在職証明書'
 
-  const doc = approval.documents as unknown as Record<string, unknown> | null
-  const template = doc?.templates as unknown as Record<string, unknown> | null
-  const templateVersion = doc?.template_versions as unknown as Record<string, unknown> | null
-  const applicant = doc?.user_profiles as unknown as Record<string, unknown> | null
-  const documentType = (template?.document_type as string) ?? ''
-  const documentTypeLabel = DOCUMENT_TYPE_LABELS[documentType] ?? documentType
+const demoValues: Record<string, string> = {
+  employee_name: '田中 太郎',
+  department: '開発部',
+  position: 'シニアエンジニア',
+  hire_date: '2020年4月1日',
+  company_name: '株式会社Backlly',
+}
 
-  // 文書の入力値を取得
-  const { data: documentValues } = await supabase
-    .from('document_values')
-    .select('variable_name, value')
-    .eq('document_id', doc?.id as string)
+const demoBodyTemplate = '{{company_name}}に在籍していることを証明します。\n\n氏名: {{employee_name}}\n部署: {{department}}\n役職: {{position}}\n入社日: {{hire_date}}'
 
-  const values: Record<string, string> = {}
-  ;(documentValues ?? []).forEach((dv: { variable_name: string; value: string }) => {
-    values[dv.variable_name] = dv.value
-  })
+const demoTimelineSteps: ApprovalStep[] = [
+  {
+    id: 'apr-step-001',
+    stepOrder: 1,
+    approverName: '総務部 花子',
+    approverRole: '確認',
+    action: 'approved',
+    comment: '内容を確認しました。問題ありません。',
+    decidedAt: '2024-12-17T14:30:00Z',
+  },
+  {
+    id: 'apr-step-002',
+    stepOrder: 2,
+    approverName: '部長 三郎',
+    approverRole: '部長承認',
+    action: 'pending',
+    comment: null,
+    decidedAt: null,
+  },
+]
 
-  // この文書の全承認履歴を取得
-  const { data: approvalHistory } = await supabase
-    .from('approval_records')
-    .select(
-      `
-      id,
-      step_order,
-      action,
-      comment,
-      acted_at,
-      created_at,
-      user_profiles!approval_records_approver_id_fkey (
-        display_name,
-        email
-      ),
-      workflow_steps:workflow_step_id (
-        name
-      )
-    `
-    )
-    .eq('document_id', doc?.id as string)
-    .order('step_order', { ascending: true })
-    .order('created_at', { ascending: true })
+const demoChecklist = [
+  { id: 'employee_name', label: '氏名 が入力済み', checked: true },
+  { id: 'department', label: '部署 が入力済み', checked: true },
+  { id: 'position', label: '役職 が入力済み', checked: true },
+  { id: 'hire_date', label: '入社日 が入力済み', checked: true },
+]
 
-  // 承認タイムラインデータを構築
-  const timelineSteps: ApprovalStep[] = (approvalHistory ?? []).map(
-    (record: Record<string, unknown>) => {
-      const recordProfile = record.user_profiles as Record<string, unknown> | null
-      const recordStep = record.workflow_steps as Record<string, unknown> | null
-      return {
-        id: record.id as string,
-        stepOrder: record.step_order as number,
-        approverName:
-          (recordProfile?.display_name as string) ??
-          (recordProfile?.email as string) ??
-          '不明',
-        approverRole: (recordStep?.name as string) ?? `ステップ ${record.step_order}`,
-        action: record.acted_at
-          ? (record.action as 'approved' | 'rejected' | 'returned')
-          : 'pending',
-        comment: (record.comment as string) ?? null,
-        decidedAt: (record.acted_at as string) ?? null,
-      }
-    }
-  )
+export default function ApprovalDetailPage({ params: _params }: PageProps) {
+  const approval = demoApproval
+  const doc = demoDoc
+  const applicant = demoApplicant
+  const documentTypeLabel = demoDocumentTypeLabel
+  const values = demoValues
+  const bodyTemplate = demoBodyTemplate
+  const timelineSteps = demoTimelineSteps
+  const approvalChecklist = demoChecklist
 
   // 期限計算
-  const deadline = (doc?.expiry_date as string) ?? null
+  const deadline = doc.expiry_date ?? null
   const urgency = getDeadlineUrgency(deadline)
 
-  // テンプレートの本文取得
-  const bodyTemplate =
-    (templateVersion?.body as Record<string, unknown>)?.content as string ?? ''
-
-  // 承認済みかどうか（既にアクション済み）
+  // 承認済みかどうか
   const isAlreadyActed = !!approval.acted_at
-
-  // 承認条件チェックリスト（テンプレートの変数定義から自動生成）
-  const variables = (templateVersion?.variables as Array<Record<string, unknown>>) ?? []
-  const approvalChecklist = variables
-    .filter((v) => v.required)
-    .map((v) => ({
-      id: v.name as string,
-      label: `${v.label ?? v.name} が入力済み`,
-      checked: !!(values[v.name as string] && values[v.name as string].trim() !== ''),
-    }))
 
   return (
     <div className="space-y-6">
@@ -195,12 +131,12 @@ export default async function ApprovalDetailPage({ params }: PageProps) {
           <div>
             <h1 className="text-xl font-bold text-slate-900">
               承認依頼: {documentTypeLabel}（
-              {(applicant?.display_name as string) ?? '不明'}）
+              {applicant?.display_name ?? '不明'}）
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-slate-500">
               <span className="flex items-center gap-1">
                 <User className="h-4 w-4" />
-                申請者: {(applicant?.display_name as string) ?? '不明'}
+                申請者: {applicant?.display_name ?? '不明'}
                 {applicant?.department ? ` / ${String(applicant.department)}` : ''}
               </span>
               <span className="flex items-center gap-1">
