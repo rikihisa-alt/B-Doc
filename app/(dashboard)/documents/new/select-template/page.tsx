@@ -37,55 +37,42 @@ export default function SelectTemplatePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // テンプレート一覧の取得（公開済みのみ）
+  // TODO: Supabase接続後にDBからデータ取得に切り替え
   useEffect(() => {
-    async function fetchTemplates() {
-      setLoading(true)
-
-      // テンプレート本体を取得
-      const { data: templateList } = await supabase
-        .from('templates')
-        .select('*')
-        .eq('is_published', true)
-        .is('deleted_at', null)
-        .order('document_type')
-        .order('name')
-
-      if (!templateList || templateList.length === 0) {
-        setTemplates([])
-        setLoading(false)
-        return
-      }
-
-      // 各テンプレートの最新バージョンを取得
-      const templateIds = templateList.map((t) => t.id)
-      const { data: versions } = await supabase
-        .from('template_versions')
-        .select('*')
-        .in('template_id', templateIds)
-        .eq('is_draft', false)
-        .order('version', { ascending: false })
-
-      // テンプレートIDごとに最新バージョンをマッピング
-      const versionMap = new Map<string, TemplateVersion>()
-      if (versions) {
-        for (const v of versions) {
-          if (!versionMap.has(v.template_id)) {
-            versionMap.set(v.template_id, v as TemplateVersion)
-          }
-        }
-      }
-
-      const merged: TemplateWithVersion[] = templateList.map((t) => ({
-        ...(t as Template),
-        latest_version: versionMap.get(t.id) ?? null,
-      }))
-
-      setTemplates(merged)
-      setLoading(false)
-    }
-
-    fetchTemplates()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    // デモデータ
+    const demoTemplates: TemplateWithVersion[] = [
+      {
+        id: 'tpl-001', name: '在職証明書', document_type: 'employment_cert',
+        description: '従業員の在職を証明する文書。金融機関提出、保育園申請等に使用。',
+        is_published: true, organization_id: 'org-1', created_by: 'user-1',
+        created_at: '2026-01-10T00:00:00Z', updated_at: '2026-03-01T00:00:00Z', deleted_at: null,
+        latest_version: { id: 'tv-001', template_id: 'tpl-001', version: 3, body: { blocks: [{ content: '{{company_name}}に在籍していることを証明します。\n\n氏名: {{employee_name}}\n部署: {{department}}' }] }, variables: [{ name: 'employee_name', label: '氏名', type: 'text', required: true, default_value: null, placeholder: '山田太郎', help_text: null, validation: null, options: null, display_order: 1, visible_condition: null }, { name: 'department', label: '部署', type: 'select', required: true, default_value: null, placeholder: null, help_text: null, validation: null, options: [{ value: '営業部', label: '営業部' }, { value: '開発部', label: '開発部' }, { value: '総務部', label: '総務部' }], display_order: 2, visible_condition: null }], layout: null, valid_from: null, valid_until: null, is_draft: false, created_by: 'user-1', created_at: '2026-03-01T00:00:00Z' },
+      },
+      {
+        id: 'tpl-002', name: '請求書', document_type: 'invoice',
+        description: '取引先への請求書。消費税計算、振込先情報を含む。',
+        is_published: true, organization_id: 'org-1', created_by: 'user-1',
+        created_at: '2026-02-01T00:00:00Z', updated_at: '2026-03-10T00:00:00Z', deleted_at: null,
+        latest_version: { id: 'tv-002', template_id: 'tpl-002', version: 2, body: { blocks: [{ content: '請求書\n\n{{client_name}} 御中\n\n金額: {{amount}}円' }] }, variables: [{ name: 'client_name', label: '取引先名', type: 'text', required: true, default_value: null, placeholder: '株式会社ABC', help_text: null, validation: null, options: null, display_order: 1, visible_condition: null }, { name: 'amount', label: '金額', type: 'number', required: true, default_value: null, placeholder: '100000', help_text: null, validation: null, options: null, display_order: 2, visible_condition: null }], layout: null, valid_from: null, valid_until: null, is_draft: false, created_by: 'user-1', created_at: '2026-03-10T00:00:00Z' },
+      },
+      {
+        id: 'tpl-003', name: '見積書', document_type: 'quotation',
+        description: '取引先への見積書。有効期限、支払条件を含む。',
+        is_published: true, organization_id: 'org-1', created_by: 'user-1',
+        created_at: '2026-01-15T00:00:00Z', updated_at: '2026-02-20T00:00:00Z', deleted_at: null,
+        latest_version: { id: 'tv-003', template_id: 'tpl-003', version: 1, body: { blocks: [{ content: '見積書\n\n{{client_name}} 御中' }] }, variables: [{ name: 'client_name', label: '取引先名', type: 'text', required: true, default_value: null, placeholder: null, help_text: null, validation: null, options: null, display_order: 1, visible_condition: null }], layout: null, valid_from: null, valid_until: null, is_draft: false, created_by: 'user-1', created_at: '2026-02-20T00:00:00Z' },
+      },
+      {
+        id: 'tpl-004', name: '退職証明書', document_type: 'resignation',
+        description: '退職した従業員に発行する退職証明書。',
+        is_published: true, organization_id: 'org-1', created_by: 'user-1',
+        created_at: '2026-02-15T00:00:00Z', updated_at: '2026-03-05T00:00:00Z', deleted_at: null,
+        latest_version: null,
+      },
+    ]
+    setTemplates(demoTemplates)
+    setLoading(false)
+  }, [])
 
   // 選択中のテンプレートオブジェクト
   const selected = templates.find((t) => t.id === selectedId) ?? null
