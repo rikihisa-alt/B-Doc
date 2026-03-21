@@ -1,31 +1,79 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Clock, CheckCircle2, XCircle } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  CheckSquare,
+  AlertTriangle,
+  Clock,
+  ChevronRight,
+} from 'lucide-react'
+import { DOCUMENT_TYPE_LABELS } from '@/types'
 
-/** ステータスラベルマッピング */
-const STATUS_LABELS: Record<string, string> = {
-  pending: '承認待ち',
-  pending_confirm: '確認待ち',
-  pending_approval: '承認待ち',
-  in_review: 'レビュー中',
-  approved: '承認済み',
-  rejected: '却下',
+// =============================================================================
+// 承認一覧ページ（Server Component）
+// 現在のユーザーに割り当てられた承認待ちタスクを一覧表示する
+// - テーブル: 文書タイトル、種別、申請者、提出日、期限緊急度、ステップ情報
+// - 期限24h以内: amber、超過: red ハイライト
+// - 行クリック → /dashboard/approvals/[id]
+// =============================================================================
+
+/** 期限の緊急度を判定するヘルパー */
+function getDeadlineUrgency(deadlineStr: string | null): 'overdue' | 'urgent' | 'normal' {
+  if (!deadlineStr) return 'normal'
+  const now = new Date()
+  const deadline = new Date(deadlineStr)
+  if (deadline < now) return 'overdue'
+  const hoursRemaining = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60)
+  if (hoursRemaining <= 24) return 'urgent'
+  return 'normal'
 }
 
-/** 文書種別ラベル */
-const TYPE_LABELS: Record<string, string> = {
-  procedure: '手順書',
-  manual: 'マニュアル',
-  regulation: '規程',
-  form: '帳票',
-  report: '報告書',
-  minutes: '議事録',
-  proposal: '企画書',
-  specification: '仕様書',
-  other: 'その他',
+/** 期限の緊急度に応じた行スタイル */
+function getUrgencyRowClass(urgency: 'overdue' | 'urgent' | 'normal'): string {
+  switch (urgency) {
+    case 'overdue':
+      return 'bg-red-50 hover:bg-red-100'
+    case 'urgent':
+      return 'bg-amber-50 hover:bg-amber-100'
+    default:
+      return 'hover:bg-slate-50'
+  }
+}
+
+/** 期限バッジの表示 */
+function DeadlineBadge({ deadline }: { deadline: string | null }) {
+  if (!deadline) {
+    return <span className="text-xs text-slate-400">--</span>
+  }
+
+  const urgency = getDeadlineUrgency(deadline)
+  const dateStr = new Date(deadline).toLocaleDateString('ja-JP', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  switch (urgency) {
+    case 'overdue':
+      return (
+        <Badge className="border-red-300 bg-red-100 text-red-800">
+          <AlertTriangle className="mr-1 h-3 w-3" />
+          期限超過
+        </Badge>
+      )
+    case 'urgent':
+      return (
+        <Badge className="border-amber-300 bg-amber-100 text-amber-800">
+          <Clock className="mr-1 h-3 w-3" />
+          {dateStr}
+        </Badge>
+      )
+    default:
+      return <span className="text-xs text-slate-500">{dateStr}</span>
+  }
 }
 
 export default async function ApprovalsPage() {
@@ -38,142 +86,205 @@ export default async function ApprovalsPage() {
     redirect('/login')
   }
 
-  // ユーザーに関連する承認待ち文書を取得
-  // approvals テーブルから pending ステータスのものを取得し、文書情報をJOIN
+  // ユーザーに関連する承認待ちタスクを取得
+  // approval_records テーブルから pending 状態のものを文書情報付きで取得
   const { data: pendingApprovals, error } = await supabase
-    .from('approvals')
+    .from('approval_records')
     .select(
       `
       id,
-      status,
-      created_at,
+      document_id,
       workflow_step_id,
-      workflow_steps (
-        id,
-        step_order,
-        approver_role
-      ),
+      step_order,
+      action,
+      created_at,
       documents (
         id,
         title,
-        document_type,
+        document_number,
         status,
+        expiry_date,
         created_by,
         created_at,
+        templates (
+          document_type
+        ),
         user_profiles!documents_created_by_fkey (
-          full_name,
-          email
+          display_name,
+          email,
+          department
         )
+      ),
+      workflow_steps:workflow_step_id (
+        name,
+        deadline_hours
       )
     `
     )
     .eq('approver_id', user.id)
-    .eq('status', 'pending')
+    .is('acted_at', null)
     .order('created_at', { ascending: false })
 
-  // 自分が作成した承認依頼中の文書も取得
-  const { data: mySubmittedDocs } = await supabase
-    .from('documents')
-    .select('id, title, document_type, status, created_at')
-    .eq('created_by', user.id)
-    .in('status', ['pending', 'in_review'])
-    .order('created_at', { ascending: false })
+  // 承認待ち件数
+  const pendingCount = pendingApprovals?.length ?? 0
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">承認管理</h1>
+      {/* ページヘッダー */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-900">承認一覧</h1>
+          {pendingCount > 0 && (
+            <Badge className="h-7 min-w-[28px] justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+              {pendingCount}
+            </Badge>
+          )}
+        </div>
+        <p className="text-sm text-slate-500">
+          あなたに割り当てられた承認待ちタスク
+        </p>
+      </div>
 
-      {/* 承認待ちタスク */}
+      {/* エラー表示 */}
+      {error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="text-sm text-red-700">
+              データの取得に失敗しました: {error.message}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 承認待ちテーブル */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Clock className="h-5 w-5 text-yellow-600" />
-            あなたの承認待ち
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CheckSquare className="h-5 w-5 text-blue-600" />
+            承認待ちタスク
+            <span className="text-sm font-normal text-slate-500">
+              ({pendingCount}件)
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {error && (
-            <p className="text-sm text-red-500">
-              データの取得に失敗しました: {error.message}
-            </p>
-          )}
-
           {pendingApprovals && pendingApprovals.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-gray-500">
-                    <th className="pb-3 pr-4 font-medium">文書タイトル</th>
-                    <th className="pb-3 pr-4 font-medium">文書種別</th>
-                    <th className="pb-3 pr-4 font-medium">申請者</th>
-                    <th className="pb-3 pr-4 font-medium">申請日</th>
-                    <th className="pb-3 pr-4 font-medium">ステップ</th>
-                    <th className="pb-3 font-medium">操作</th>
+                  <tr className="border-b border-slate-200 text-left">
+                    <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      文書タイトル
+                    </th>
+                    <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      種別
+                    </th>
+                    <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      申請者
+                    </th>
+                    <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      提出日
+                    </th>
+                    <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      期限
+                    </th>
+                    <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      ステップ
+                    </th>
+                    <th className="pb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      {/* 矢印 */}
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {pendingApprovals.map((approval: Record<string, unknown>) => {
                     const doc = approval.documents as Record<string, unknown> | null
                     const step = approval.workflow_steps as Record<string, unknown> | null
-                    const requester = doc
-                      ? (
-                          doc.user_profiles as Record<string, unknown> | null
-                        )
+                    const applicant = doc
+                      ? (doc.user_profiles as Record<string, unknown> | null)
                       : null
+                    const template = doc
+                      ? (doc.templates as Record<string, unknown> | null)
+                      : null
+
+                    // 期限計算: ステップのdeadline_hoursから算出
+                    const createdAt = approval.created_at as string
+                    const deadlineHours = step?.deadline_hours as number | null
+                    const deadline = deadlineHours
+                      ? new Date(
+                          new Date(createdAt).getTime() +
+                            deadlineHours * 60 * 60 * 1000
+                        ).toISOString()
+                      : (doc?.expiry_date as string | null)
+
+                    const urgency = getDeadlineUrgency(deadline)
 
                     return (
                       <tr
                         key={approval.id as string}
-                        className="border-b last:border-0"
+                        className={`cursor-pointer transition-colors ${getUrgencyRowClass(urgency)}`}
                       >
-                        <td className="py-3 pr-4">
+                        <td className="py-3.5 pr-4">
                           <Link
-                            href={`/dashboard/documents/${doc?.id}`}
-                            className="font-medium text-blue-600 hover:underline"
+                            href={`/dashboard/approvals/${approval.id}`}
+                            className="block"
                           >
-                            {(doc?.title as string) ?? '不明'}
+                            <p className="font-medium text-slate-900">
+                              {(doc?.title as string) ?? '不明な文書'}
+                            </p>
+                            {doc?.document_number ? (
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                {String(doc.document_number)}
+                              </p>
+                            ) : null}
                           </Link>
                         </td>
-                        <td className="py-3 pr-4">
-                          <Badge variant="secondary">
-                            {TYPE_LABELS[(doc?.document_type as string) ?? ''] ??
-                              (doc?.document_type as string)}
+                        <td className="py-3.5 pr-4">
+                          <Badge variant="secondary" className="text-xs">
+                            {DOCUMENT_TYPE_LABELS[(template?.document_type as string) ?? ''] ??
+                              (template?.document_type as string) ??
+                              '--'}
                           </Badge>
                         </td>
-                        <td className="py-3 pr-4 text-gray-700">
-                          {(requester?.full_name as string) ??
-                            (requester?.email as string) ??
-                            '不明'}
+                        <td className="py-3.5 pr-4">
+                          <div>
+                            <p className="text-sm text-slate-700">
+                              {(applicant?.display_name as string) ??
+                                (applicant?.email as string) ??
+                                '不明'}
+                            </p>
+                            {applicant?.department ? (
+                              <p className="text-xs text-slate-400">
+                                {String(applicant.department)}
+                              </p>
+                            ) : null}
+                          </div>
                         </td>
-                        <td className="py-3 pr-4 text-gray-500">
-                          {doc?.created_at
-                            ? new Date(
-                                doc.created_at as string
-                              ).toLocaleDateString('ja-JP')
-                            : '-'}
+                        <td className="py-3.5 pr-4 text-sm text-slate-500">
+                          {createdAt
+                            ? new Date(createdAt).toLocaleDateString('ja-JP', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                              })
+                            : '--'}
                         </td>
-                        <td className="py-3 pr-4">
-                          <span className="text-gray-600">
-                            ステップ {(step?.step_order as number) ?? '-'}
+                        <td className="py-3.5 pr-4">
+                          <DeadlineBadge deadline={deadline} />
+                        </td>
+                        <td className="py-3.5 pr-4">
+                          <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                            {(step?.name as string) ??
+                              `ステップ ${approval.step_order}`}
                           </span>
                         </td>
-                        <td className="py-3">
-                          <div className="flex gap-2">
-                            <Link
-                              href={`/dashboard/documents/${doc?.id}?action=approve`}
-                              className="inline-flex h-8 items-center rounded-md bg-green-600 px-3 text-xs font-medium text-white transition-colors hover:bg-green-700"
-                            >
-                              <CheckCircle2 className="mr-1 h-3 w-3" />
-                              承認
-                            </Link>
-                            <Link
-                              href={`/dashboard/documents/${doc?.id}?action=reject`}
-                              className="inline-flex h-8 items-center rounded-md bg-red-600 px-3 text-xs font-medium text-white transition-colors hover:bg-red-700"
-                            >
-                              <XCircle className="mr-1 h-3 w-3" />
-                              却下
-                            </Link>
-                          </div>
+                        <td className="py-3.5">
+                          <Link
+                            href={`/dashboard/approvals/${approval.id}`}
+                            className="text-slate-400 hover:text-slate-600"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Link>
                         </td>
                       </tr>
                     )
@@ -182,52 +293,15 @@ export default async function ApprovalsPage() {
               </table>
             </div>
           ) : (
-            <p className="py-8 text-center text-sm text-gray-500">
-              現在、承認待ちのタスクはありません。
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 自分が提出した文書の状況 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">提出中の文書</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {mySubmittedDocs && mySubmittedDocs.length > 0 ? (
-            <div className="space-y-3">
-              {mySubmittedDocs.map((doc) => (
-                <Link
-                  key={doc.id}
-                  href={`/dashboard/documents/${doc.id}`}
-                  className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-gray-50"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{doc.title}</p>
-                    <p className="text-sm text-gray-500">
-                      {TYPE_LABELS[doc.document_type] ?? doc.document_type}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge
-                      variant={
-                        doc.status === 'in_review' ? 'default' : 'secondary'
-                      }
-                    >
-                      {STATUS_LABELS[doc.status] ?? doc.status}
-                    </Badge>
-                    <span className="text-sm text-gray-400">
-                      {new Date(doc.created_at).toLocaleDateString('ja-JP')}
-                    </span>
-                  </div>
-                </Link>
-              ))}
+            <div className="flex flex-col items-center justify-center py-16">
+              <CheckSquare className="mb-3 h-12 w-12 text-slate-200" />
+              <p className="text-sm font-medium text-slate-500">
+                承認待ちのタスクはありません
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                新しい承認依頼が届くとここに表示されます
+              </p>
             </div>
-          ) : (
-            <p className="py-8 text-center text-sm text-gray-500">
-              提出中の文書はありません。
-            </p>
           )}
         </CardContent>
       </Card>

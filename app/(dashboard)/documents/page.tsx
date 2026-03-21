@@ -2,29 +2,42 @@ import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/document/status-badge'
 import {
   DOCUMENT_TYPE_LABELS,
+  STATUS_BADGE_MAP,
   type DocumentStatus,
 } from '@/types'
-import { Plus, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  RefreshCw,
+  X,
+} from 'lucide-react'
 
-/** 1ページあたりの表示件数 */
+// ページあたりの表示件数
 const PAGE_SIZE = 20
 
+/** 検索パラメータの型定義 */
 interface SearchParams {
-  q?: string
-  status?: DocumentStatus
+  doc_number?: string
   document_type?: string
+  q?: string
+  status?: string
   date_from?: string
   date_to?: string
+  created_by?: string
   page?: string
+  sort?: string
+  order?: 'asc' | 'desc'
 }
 
 /**
  * 文書一覧ページ（Server Component）
- * 検索・フィルタリング・ページネーション付きのテーブル表示
+ * フィルタバー・一括操作・ソータブルテーブル・ページネーション
  */
 export default async function DocumentsPage({
   searchParams,
@@ -35,273 +48,549 @@ export default async function DocumentsPage({
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // ページ番号の取得（1始まり）
+  // ユーザープロフィール取得（ロール判定用）
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('organization_id, roles')
+    .eq('id', user?.id ?? '')
+    .single()
+
+  // 同一組織のユーザー一覧（作成者フィルタ用）
+  const { data: orgUsers } = await supabase
+    .from('user_profiles')
+    .select('id, display_name')
+    .eq('organization_id', profile?.organization_id ?? '')
+    .eq('is_active', true)
+    .order('display_name')
+
+  // ページ番号（1始まり）
   const currentPage = Math.max(1, parseInt(params.page ?? '1', 10))
   const offset = (currentPage - 1) * PAGE_SIZE
 
-  // クエリ構築
+  // ソートカラム
+  const sortField = params.sort ?? 'created_at'
+  const sortOrder = params.order ?? 'desc'
+
+  // ---------- クエリ構築 ----------
   let query = supabase
     .from('documents')
-    .select('id, document_number, title, document_type, status, created_at', {
-      count: 'exact',
-    })
+    .select(
+      'id, document_number, title, document_type, status, created_at, created_by, recipient',
+      { count: 'exact' }
+    )
 
-  // 検索フィルタ: document_number / title のキーワード検索
+  // フィルタ: 文書番号（前方一致）
+  if (params.doc_number) {
+    query = query.ilike('document_number', `${params.doc_number}%`)
+  }
+
+  // フィルタ: 名前・会社名（タイトル or recipient->name）
   if (params.q) {
     query = query.or(
-      `document_number.ilike.%${params.q}%,title.ilike.%${params.q}%`
+      `title.ilike.%${params.q}%,recipient->>name.ilike.%${params.q}%`
     )
   }
 
-  // ステータスフィルタ
+  // フィルタ: ステータス
   if (params.status) {
     query = query.eq('status', params.status)
   }
 
-  // 文書種別フィルタ
+  // フィルタ: 文書種別
   if (params.document_type) {
     query = query.eq('document_type', params.document_type)
   }
 
-  // 日付範囲フィルタ
+  // フィルタ: 日付範囲
   if (params.date_from) {
-    query = query.gte('created_at', params.date_from)
+    query = query.gte('created_at', `${params.date_from}T00:00:00`)
   }
   if (params.date_to) {
-    // date_to の終端は翌日の 00:00:00 までを含める
-    query = query.lt('created_at', `${params.date_to}T23:59:59`)
+    query = query.lte('created_at', `${params.date_to}T23:59:59`)
+  }
+
+  // フィルタ: 作成者
+  if (params.created_by) {
+    query = query.eq('created_by', params.created_by)
   }
 
   // ソート・ページネーション
   query = query
-    .order('created_at', { ascending: false })
+    .order(sortField, { ascending: sortOrder === 'asc' })
     .range(offset, offset + PAGE_SIZE - 1)
 
   const { data: documents, count } = await query
+  const totalCount = count ?? 0
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
-  const totalPages = Math.ceil((count ?? 0) / PAGE_SIZE)
+  // 作成者名のマッピング
+  const userMap = new Map(
+    (orgUsers ?? []).map((u) => [u.id, u.display_name])
+  )
 
-  /**
-   * フィルタパラメータ付きURLを生成するヘルパー
-   * 指定ページへの遷移リンクに使用する
-   */
-  function buildPageUrl(page: number): string {
+  // ---------- URL構築ヘルパー ----------
+  /** フィルタパラメータを保持したままページ遷移URLを生成 */
+  function buildUrl(overrides: Record<string, string | undefined>): string {
     const p = new URLSearchParams()
-    if (params.q) p.set('q', params.q)
-    if (params.status) p.set('status', params.status)
-    if (params.document_type) p.set('document_type', params.document_type)
-    if (params.date_from) p.set('date_from', params.date_from)
-    if (params.date_to) p.set('date_to', params.date_to)
-    p.set('page', String(page))
+    const merged = { ...params, ...overrides }
+    for (const [key, val] of Object.entries(merged)) {
+      if (val && val !== '') p.set(key, val)
+    }
     return `/documents?${p.toString()}`
   }
 
+  /** ソートリンク用URL生成 */
+  function sortUrl(field: string): string {
+    const newOrder =
+      params.sort === field && sortOrder === 'asc' ? 'desc' : 'asc'
+    return buildUrl({ sort: field, order: newOrder, page: '1' })
+  }
+
+  /** ソート方向インジケータ */
+  function sortIndicator(field: string): string {
+    if (params.sort !== field && !(field === 'created_at' && !params.sort))
+      return ''
+    return sortOrder === 'asc' ? ' \u2191' : ' \u2193'
+  }
+
+  // ステータスオプション（STATUS_BADGE_MAPから生成）
+  const statusOptions = Object.entries(STATUS_BADGE_MAP).map(
+    ([value, info]) => ({ value, label: info.label })
+  )
+
+  // 表示範囲テキスト
+  const rangeStart = totalCount > 0 ? offset + 1 : 0
+  const rangeEnd = Math.min(offset + PAGE_SIZE, totalCount)
+
+  // フィルタが何か適用されているか判定
+  const hasFilters = !!(
+    params.doc_number ||
+    params.q ||
+    params.status ||
+    params.document_type ||
+    params.date_from ||
+    params.date_to ||
+    params.created_by
+  )
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">文書一覧</h1>
-        <Link href="/documents/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
+        <h1 className="text-xl font-bold text-gray-900">文書一覧</h1>
+        <Link href="/documents/new/select-template">
+          <Button size="sm">
+            <Plus className="mr-1.5 h-4 w-4" />
             新規作成
           </Button>
         </Link>
       </div>
 
-      {/* 検索・フィルタ */}
-      <Card>
-        <CardContent className="p-4">
-          <form method="get" action="/documents" className="flex flex-wrap gap-3">
-            {/* キーワード検索 */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+      {/* ====== フィルタバー（常時表示・折りたたみ不可） ====== */}
+      <div className="rounded-lg border bg-white p-4">
+        <form method="get" action="/documents">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7">
+            {/* 文書番号 */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                文書番号
+              </label>
               <Input
-                name="q"
-                placeholder="文書番号・タイトルで検索"
-                defaultValue={params.q ?? ''}
-                className="pl-9"
+                name="doc_number"
+                placeholder="DOC-2024..."
+                defaultValue={params.doc_number ?? ''}
+                className="h-8 text-xs font-mono"
               />
             </div>
 
-            {/* ステータスフィルタ */}
-            <select
-              name="status"
-              defaultValue={params.status ?? ''}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">すべてのステータス</option>
-              <option value="draft">下書き</option>
-              <option value="pending">承認待ち</option>
-              <option value="in_review">レビュー中</option>
-              <option value="approved">承認済み</option>
-              <option value="rejected">却下</option>
-              <option value="published">公開済み</option>
-              <option value="archived">アーカイブ</option>
-            </select>
+            {/* 種別 */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                種別
+              </label>
+              <select
+                name="document_type"
+                defaultValue={params.document_type ?? ''}
+                className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">全種別</option>
+                {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            {/* 文書種別フィルタ */}
-            <select
-              name="document_type"
-              defaultValue={params.document_type ?? ''}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">すべての種別</option>
-              {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            {/* 名前・会社名 */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                対象者名 / 会社名
+              </label>
+              <Input
+                name="q"
+                placeholder="山田太郎 / 株式会社..."
+                defaultValue={params.q ?? ''}
+                className="h-8 text-xs"
+              />
+            </div>
+
+            {/* ステータス */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                ステータス
+              </label>
+              <select
+                name="status"
+                defaultValue={params.status ?? ''}
+                className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">全ステータス</option>
+                {statusOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* 日付範囲 */}
-            <Input
-              name="date_from"
-              type="date"
-              defaultValue={params.date_from ?? ''}
-              className="w-[160px]"
-              placeholder="開始日"
-            />
-            <Input
-              name="date_to"
-              type="date"
-              defaultValue={params.date_to ?? ''}
-              className="w-[160px]"
-              placeholder="終了日"
-            />
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                作成日
+              </label>
+              <div className="flex items-center gap-1">
+                <Input
+                  name="date_from"
+                  type="date"
+                  defaultValue={params.date_from ?? ''}
+                  className="h-8 text-xs"
+                />
+                <span className="text-xs text-gray-400">~</span>
+                <Input
+                  name="date_to"
+                  type="date"
+                  defaultValue={params.date_to ?? ''}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
 
-            <Button type="submit" variant="secondary">
-              <Search className="mr-2 h-4 w-4" />
-              検索
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            {/* 作成者 */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                作成者
+              </label>
+              <select
+                name="created_by"
+                defaultValue={params.created_by ?? ''}
+                className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">全員</option>
+                {(orgUsers ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-      {/* 文書テーブル */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">
-                    文書番号
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">
-                    タイトル
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">
-                    種別
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">
-                    ステータス
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">
-                    作成日
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents && documents.length > 0 ? (
-                  documents.map((doc) => (
+            {/* 検索・クリアボタン */}
+            <div className="flex items-end gap-2">
+              <Button type="submit" size="sm" className="h-8 px-3">
+                <Search className="mr-1 h-3.5 w-3.5" />
+                検索
+              </Button>
+              {hasFilters && (
+                <Link href="/documents">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-gray-500"
+                  >
+                    <X className="mr-1 h-3.5 w-3.5" />
+                    クリア
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* ====== 一括操作バー（JS制御のため data属性で管理） ====== */}
+      <div
+        id="bulk-actions-bar"
+        className="hidden items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2"
+      >
+        <span className="text-sm font-medium text-blue-700">
+          <span id="selected-count">0</span>件選択中
+        </span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="h-7 text-xs">
+            <Download className="mr-1 h-3 w-3" />
+            PDF一括DL
+          </Button>
+          <Button variant="outline" size="sm" className="h-7 text-xs">
+            <RefreshCw className="mr-1 h-3 w-3" />
+            ステータス更新
+          </Button>
+        </div>
+      </div>
+
+      {/* ====== 文書テーブル ====== */}
+      <div className="overflow-hidden rounded-lg border bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50/80">
+                {/* チェックボックス列 */}
+                <th className="w-10 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-gray-300"
+                    aria-label="すべて選択"
+                  />
+                </th>
+                {/* 文書番号 */}
+                <th className="px-3 py-2.5 text-left">
+                  <Link
+                    href={sortUrl('document_number')}
+                    className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-900"
+                  >
+                    文書番号{sortIndicator('document_number')}
+                  </Link>
+                </th>
+                {/* 種別 */}
+                <th className="px-3 py-2.5 text-left">
+                  <Link
+                    href={sortUrl('document_type')}
+                    className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-900"
+                  >
+                    種別{sortIndicator('document_type')}
+                  </Link>
+                </th>
+                {/* 対象者 */}
+                <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  対象者
+                </th>
+                {/* ステータス */}
+                <th className="px-3 py-2.5 text-left">
+                  <Link
+                    href={sortUrl('status')}
+                    className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-900"
+                  >
+                    ステータス{sortIndicator('status')}
+                  </Link>
+                </th>
+                {/* 作成日 */}
+                <th className="px-3 py-2.5 text-left">
+                  <Link
+                    href={sortUrl('created_at')}
+                    className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-900"
+                  >
+                    作成日{sortIndicator('created_at')}
+                  </Link>
+                </th>
+                {/* 操作 */}
+                <th className="w-20 px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  操作
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {documents && documents.length > 0 ? (
+                documents.map((doc) => {
+                  // recipientからの対象者名取得
+                  const recipient = doc.recipient as {
+                    name?: string
+                  } | null
+                  const recipientName =
+                    recipient?.name ?? doc.title ?? '-'
+
+                  return (
                     <tr
                       key={doc.id}
-                      className="border-b transition-colors hover:bg-gray-50"
+                      className="transition-colors hover:bg-gray-50/60"
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                      {/* チェックボックス */}
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          value={doc.id}
+                          className="doc-checkbox h-3.5 w-3.5 rounded border-gray-300"
+                          aria-label={`${doc.document_number ?? '未採番'} を選択`}
+                        />
+                      </td>
+                      {/* 文書番号 */}
+                      <td className="px-3 py-2.5 font-mono text-xs text-gray-600">
                         {doc.document_number ?? '未採番'}
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {doc.title}
+                      {/* 種別 */}
+                      <td className="px-3 py-2.5 text-xs text-gray-600">
+                        {DOCUMENT_TYPE_LABELS[doc.document_type] ??
+                          doc.document_type}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {DOCUMENT_TYPE_LABELS[doc.document_type] ?? doc.document_type}
+                      {/* 対象者 */}
+                      <td className="px-3 py-2.5 text-xs text-gray-900">
+                        {recipientName}
                       </td>
-                      <td className="px-4 py-3">
+                      {/* ステータスバッジ */}
+                      <td className="px-3 py-2.5">
                         <StatusBadge
                           status={doc.status as DocumentStatus}
                         />
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {new Date(doc.created_at).toLocaleDateString('ja-JP')}
+                      {/* 作成日 */}
+                      <td className="px-3 py-2.5 text-xs text-gray-500">
+                        {new Date(doc.created_at).toLocaleDateString(
+                          'ja-JP'
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      {/* 操作 */}
+                      <td className="px-3 py-2.5 text-center">
                         <Link href={`/documents/${doc.id}`}>
-                          <Button variant="ghost" size="sm">
-                            詳細
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs"
+                          >
+                            開く
                           </Button>
                         </Link>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-12 text-center text-gray-500"
-                    >
-                      文書が見つかりませんでした。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-4 py-16 text-center text-sm text-gray-400"
+                  >
+                    {hasFilters
+                      ? '条件に一致する文書はありません。フィルタを変更してください。'
+                      : '文書がまだありません。'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      {/* ページネーション */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            全 {count} 件中 {offset + 1} - {Math.min(offset + PAGE_SIZE, count ?? 0)} 件を表示
-          </p>
-          <div className="flex items-center gap-2">
-            {currentPage > 1 && (
-              <Link href={buildPageUrl(currentPage - 1)}>
-                <Button variant="outline" size="sm">
+      {/* ====== ページネーション ====== */}
+      <div className="flex items-center justify-between text-sm">
+        {/* 件数表示 */}
+        <p className="text-gray-500">
+          全 <span className="font-semibold text-gray-700">{totalCount}</span>
+          件&ensp;
+          {rangeStart}〜{rangeEnd}件表示
+        </p>
+
+        {/* ページナビゲーション */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            {/* 前へ */}
+            {currentPage > 1 ? (
+              <Link href={buildUrl({ page: String(currentPage - 1) })}>
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0">
                   <ChevronLeft className="h-4 w-4" />
-                  前へ
                 </Button>
               </Link>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                disabled
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
             )}
 
-            {/* ページ番号ボタン（最大5ページ分表示） */}
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const startPage = Math.max(
+            {/* ページ番号ボタン（最大7ページ分） */}
+            {(() => {
+              const maxVisible = 7
+              let startPage = Math.max(
                 1,
-                Math.min(currentPage - 2, totalPages - 4)
+                currentPage - Math.floor(maxVisible / 2)
               )
-              const page = startPage + i
-              if (page > totalPages) return null
-              return (
-                <Link key={page} href={buildPageUrl(page)}>
+              const endPage = Math.min(totalPages, startPage + maxVisible - 1)
+              if (endPage - startPage + 1 < maxVisible) {
+                startPage = Math.max(1, endPage - maxVisible + 1)
+              }
+
+              const pages: number[] = []
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(i)
+              }
+
+              return pages.map((page) => (
+                <Link key={page} href={buildUrl({ page: String(page) })}>
                   <Button
                     variant={page === currentPage ? 'default' : 'outline'}
                     size="sm"
-                    className="w-9"
+                    className="h-8 w-8 p-0 text-xs"
                   >
                     {page}
                   </Button>
                 </Link>
-              )
-            })}
+              ))
+            })()}
 
-            {currentPage < totalPages && (
-              <Link href={buildPageUrl(currentPage + 1)}>
-                <Button variant="outline" size="sm">
-                  次へ
+            {/* 次へ */}
+            {currentPage < totalPages ? (
+              <Link href={buildUrl({ page: String(currentPage + 1) })}>
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </Link>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                disabled
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* ====== チェックボックス一括操作のインラインスクリプト ====== */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              var bar = document.getElementById('bulk-actions-bar');
+              var countEl = document.getElementById('selected-count');
+              var headerCb = document.querySelector('thead input[type="checkbox"]');
+              function update() {
+                var checked = document.querySelectorAll('.doc-checkbox:checked');
+                if (checked.length > 0) {
+                  bar.classList.remove('hidden');
+                  bar.classList.add('flex');
+                } else {
+                  bar.classList.add('hidden');
+                  bar.classList.remove('flex');
+                }
+                countEl.textContent = checked.length;
+              }
+              document.addEventListener('change', function(e) {
+                if (e.target === headerCb) {
+                  var cbs = document.querySelectorAll('.doc-checkbox');
+                  cbs.forEach(function(cb) { cb.checked = headerCb.checked; });
+                }
+                update();
+              });
+            })();
+          `,
+        }}
+      />
     </div>
   )
 }

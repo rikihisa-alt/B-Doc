@@ -1,46 +1,65 @@
-import { Badge } from '@/components/ui/badge'
-import { STATUS_BADGE_MAP, type DocumentStatus } from '@/types'
 import { cn } from '@/lib/utils'
 
-// ステータスの色をTailwindクラスにマッピング
-const COLOR_CLASSES: Record<string, string> = {
-  gray: 'bg-gray-100 text-gray-700 border-gray-200',
-  yellow: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  orange: 'bg-orange-100 text-orange-700 border-orange-200',
-  blue: 'bg-blue-100 text-blue-700 border-blue-200',
-  green: 'bg-green-100 text-green-700 border-green-200',
-  purple: 'bg-purple-100 text-purple-700 border-purple-200',
-  red: 'bg-red-100 text-red-700 border-red-200',
-  emerald: 'bg-emerald-600 text-white border-emerald-600',
-  indigo: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+// =============================================================================
+// ステータスバッジ定義
+// 各ステータスに対応するラベルとTailwindクラスを静的に定義
+// =============================================================================
+
+/** ステータスごとのバッジ表示情報 */
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  draft:            { label: '下書き',       className: 'bg-gray-100 text-gray-700 border border-gray-300' },
+  pending_confirm:  { label: '確認待ち',     className: 'bg-amber-50 text-amber-700 border border-amber-300' },
+  returned:         { label: '差戻し',       className: 'bg-red-50 text-red-700 border border-red-400 font-semibold' },
+  pending_approval: { label: '承認待ち',     className: 'bg-blue-50 text-blue-700 border border-blue-300' },
+  approved:         { label: '承認済み',     className: 'bg-emerald-50 text-emerald-700 border border-emerald-300' },
+  issuing:          { label: '発行準備中',   className: 'bg-violet-50 text-violet-700 border border-violet-300' },
+  issued:           { label: '発行済み',     className: 'bg-emerald-600 text-white' },
+  sent:             { label: '送付済み',     className: 'bg-teal-600 text-white' },
+  cancelled:        { label: '取消',         className: 'bg-red-700 text-white' },
+  expired:          { label: '失効',         className: 'bg-gray-500 text-white' },
+  superseded:       { label: '差替済み',     className: 'bg-gray-400 text-white' },
 }
 
 interface StatusBadgeProps {
-  /** 文書ステータス */
-  status: DocumentStatus
+  /** 文書ステータス文字列 */
+  status: string
   /** 追加のクラス名 */
   className?: string
 }
 
 /**
  * 文書ステータスバッジコンポーネント
+ *
+ * 全ステータスに対応する色・ラベルを静的に定義し、
+ * cn() でインラインに合成することで Tailwind の JIT で確実にクラスが生成される。
  */
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const badgeInfo = STATUS_BADGE_MAP[status]
+  const badge = STATUS_BADGE[status]
 
-  if (!badgeInfo) {
+  // 未定義ステータスのフォールバック
+  if (!badge) {
     return (
-      <Badge variant="outline" className={className}>
+      <span
+        className={cn(
+          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+          'bg-gray-100 text-gray-600 border border-gray-300',
+          className,
+        )}
+      >
         {status}
-      </Badge>
+      </span>
     )
   }
 
-  const colorClass = COLOR_CLASSES[badgeInfo.color] ?? COLOR_CLASSES.gray
-
   return (
-    <Badge variant="outline" className={cn(colorClass, className)}>
-      {badgeInfo.label}
-    </Badge>
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+        badge.className,
+        className,
+      )}
+    >
+      {badge.label}
+    </span>
   )
 }
