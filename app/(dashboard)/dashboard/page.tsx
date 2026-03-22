@@ -1,7 +1,12 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/document/status-badge'
-import { DOCUMENT_TYPE_LABELS } from '@/types'
+import { DOCUMENT_TYPE_LABELS, DOCUMENT_STATUS } from '@/types'
+import { getDocuments, getApprovalRecords } from '@/lib/store'
+import type { LocalDocument } from '@/lib/store'
 import {
   Plus,
   Settings,
@@ -10,26 +15,41 @@ import {
 } from 'lucide-react'
 
 /**
- * ダッシュボードページ
- * TODO: Supabase接続後にDBからデータ取得に切り替え
+ * ダッシュボードページ（Client Component）
+ * ストアからデータを動的に取得して表示
  */
-
-// デモ用のサンプル文書データ
-const DEMO_DOCUMENTS = [
-  { id: '1', document_number: 'EMP-2026-00001', title: '在職証明書（田中太郎）', document_type: 'employment_cert', status: 'issued', created_at: '2026-03-20T10:00:00Z' },
-  { id: '2', document_number: 'INV-2026-00001', title: '請求書（株式会社ABC）', document_type: 'invoice', status: 'pending_approval', created_at: '2026-03-19T14:30:00Z' },
-  { id: '3', document_number: null, title: '退職証明書（佐藤花子）', document_type: 'resignation', status: 'draft', created_at: '2026-03-18T09:15:00Z' },
-  { id: '4', document_number: 'QUO-2026-00003', title: '見積書（DEF株式会社）', document_type: 'quotation', status: 'returned', created_at: '2026-03-17T16:45:00Z' },
-  { id: '5', document_number: 'EMP-2026-00002', title: '在職証明書（山田一郎）', document_type: 'employment_cert', status: 'pending_confirm', created_at: '2026-03-16T11:20:00Z' },
-]
-
 export default function DashboardPage() {
+  const [documents, setDocuments] = useState<LocalDocument[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    const docs = getDocuments()
+    setDocuments(docs)
+    setLoaded(true)
+  }, [])
+
   const isAdmin = true
+
+  // ストアからカウントを動的に計算
+  const pendingApprovalCount = documents.filter(
+    (d) => d.status === DOCUMENT_STATUS.PENDING_APPROVAL || d.status === DOCUMENT_STATUS.PENDING_CONFIRM
+  ).length
+  const returnedCount = documents.filter(
+    (d) => d.status === DOCUMENT_STATUS.RETURNED
+  ).length
+  const draftCount = documents.filter(
+    (d) => d.status === DOCUMENT_STATUS.DRAFT
+  ).length
+
+  // 最近の文書（updated_at降順、上位10件）
+  const recentDocuments = [...documents]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, 10)
 
   const actionItems = [
     {
       label: '承認待ち',
-      count: 3,
+      count: pendingApprovalCount,
       href: '/dashboard/approvals',
       color: 'text-blue-700',
       bgColor: 'bg-blue-50',
@@ -39,17 +59,17 @@ export default function DashboardPage() {
     },
     {
       label: '差戻し',
-      count: 1,
+      count: returnedCount,
       href: '/dashboard/documents?status=returned',
       color: 'text-red-700',
       bgColor: 'bg-red-50',
       borderColor: 'border-red-300',
       hoverBg: 'hover:bg-red-100',
-      urgent: true,
+      urgent: returnedCount > 0,
     },
     {
       label: '下書き',
-      count: 2,
+      count: draftCount,
       href: '/dashboard/documents?status=draft',
       color: 'text-gray-700',
       bgColor: 'bg-gray-50',
@@ -58,6 +78,14 @@ export default function DashboardPage() {
       urgent: false,
     },
   ]
+
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm text-gray-400">読み込み中...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -117,7 +145,7 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {DEMO_DOCUMENTS.map((doc) => (
+              {recentDocuments.map((doc) => (
                 <tr key={doc.id} className="transition-colors hover:bg-gray-50/60">
                   <td className="px-4 py-2 font-mono text-xs text-gray-500">{doc.document_number ?? '未採番'}</td>
                   <td className="px-4 py-2 text-xs text-gray-600">{DOCUMENT_TYPE_LABELS[doc.document_type] ?? doc.document_type}</td>
@@ -131,6 +159,13 @@ export default function DashboardPage() {
                   </td>
                 </tr>
               ))}
+              {recentDocuments.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">
+                    文書がまだありません
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

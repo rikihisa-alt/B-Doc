@@ -24,32 +24,28 @@ import {
   X,
   Loader2,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import {
+  getDocument,
+  saveDocument,
+  addApprovalRecord,
+  addAuditLog,
+} from '@/lib/store'
+import { DOCUMENT_STATUS } from '@/types'
 
 // =============================================================================
-// 承認実行パネル（Client Component）
-// - 承認条件チェックリスト（自動チェック対応）
-// - [承認する] ボタン → ConfirmDialog（グリーン）
-// - 差戻し理由 textarea（必須）→ [差戻す] ボタン（レッド + 確認）
+// 承認実行パネル（Client Component - ストアベース版）
 // =============================================================================
 
 interface ChecklistItem {
-  /** チェック項目のID */
   id: string
-  /** チェック項目のラベル */
   label: string
-  /** 自動チェック済みかどうか */
   checked: boolean
 }
 
 interface ApprovalExecutionPanelProps {
-  /** 承認レコードID */
   approvalId: string
-  /** 文書ID */
   documentId: string
-  /** 既に処理済みかどうか */
   isAlreadyActed: boolean
-  /** 承認条件チェックリスト */
   checklist: ChecklistItem[]
 }
 
@@ -60,7 +56,6 @@ export function ApprovalExecutionPanel({
   checklist,
 }: ApprovalExecutionPanelProps) {
   const router = useRouter()
-  const supabase = createClient()
 
   // チェックリスト状態
   const [checkStates, setCheckStates] = useState<Record<string, boolean>>(
@@ -88,7 +83,6 @@ export function ApprovalExecutionPanel({
     checklist.length === 0 ||
     checklist.every((item) => checkStates[item.id])
 
-  /** チェック状態を切り替え */
   const toggleCheck = (id: string) => {
     setCheckStates((prev) => ({
       ...prev,
@@ -102,28 +96,42 @@ export function ApprovalExecutionPanel({
     setError(null)
 
     try {
-      const response = await fetch(`/api/documents/${documentId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          approval_id: approvalId,
-          action: 'approve',
-          comment: null,
-        }),
+      const doc = getDocument(documentId)
+      if (!doc) throw new Error('文書が見つかりません')
+
+      // 文書ステータスを承認済みに更新
+      saveDocument({
+        ...doc,
+        status: DOCUMENT_STATUS.APPROVED,
       })
 
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error?.message ?? '承認処理に失敗しました')
-      }
+      // 承認レコード追加
+      addApprovalRecord({
+        document_id: documentId,
+        step_order: 1,
+        approver_name: 'デモユーザー',
+        action: 'approved',
+        comment: '',
+        acted_at: new Date().toISOString(),
+      })
 
-      // 成功 → 一覧へ戻る
+      // 監査ログ追加
+      addAuditLog({
+        user_name: 'デモユーザー',
+        user_role: 'approver',
+        target_type: 'document',
+        target_id: documentId,
+        target_label: doc.title,
+        operation: 'approve',
+        before_value: { status: doc.status },
+        after_value: { status: 'approved' },
+        success: true,
+        comment: null,
+      })
+
       router.push('/dashboard/approvals')
-      router.refresh()
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : '承認処理中にエラーが発生しました'
-      )
+      setError(err instanceof Error ? err.message : '承認処理中にエラーが発生しました')
     } finally {
       setIsApproving(false)
     }
@@ -137,28 +145,42 @@ export function ApprovalExecutionPanel({
     setError(null)
 
     try {
-      const response = await fetch(`/api/documents/${documentId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          approval_id: approvalId,
-          action: 'return',
-          comment: returnReason.trim(),
-        }),
+      const doc = getDocument(documentId)
+      if (!doc) throw new Error('文書が見つかりません')
+
+      // 文書ステータスを差戻しに更新
+      saveDocument({
+        ...doc,
+        status: DOCUMENT_STATUS.RETURNED,
       })
 
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error?.message ?? '差戻し処理に失敗しました')
-      }
+      // 承認レコード追加
+      addApprovalRecord({
+        document_id: documentId,
+        step_order: 1,
+        approver_name: 'デモユーザー',
+        action: 'returned',
+        comment: returnReason.trim(),
+        acted_at: new Date().toISOString(),
+      })
 
-      // 成功 → 一覧へ戻る
+      // 監査ログ追加
+      addAuditLog({
+        user_name: 'デモユーザー',
+        user_role: 'approver',
+        target_type: 'document',
+        target_id: documentId,
+        target_label: doc.title,
+        operation: 'return',
+        before_value: { status: doc.status },
+        after_value: { status: 'returned' },
+        success: true,
+        comment: returnReason.trim(),
+      })
+
       router.push('/dashboard/approvals')
-      router.refresh()
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : '差戻し処理中にエラーが発生しました'
-      )
+      setError(err instanceof Error ? err.message : '差戻し処理中にエラーが発生しました')
     } finally {
       setIsReturning(false)
     }
@@ -214,15 +236,11 @@ export function ApprovalExecutionPanel({
                           : 'border-slate-300'
                       }`}
                     >
-                      {checkStates[item.id] && (
-                        <Check className="h-3 w-3" />
-                      )}
+                      {checkStates[item.id] && <Check className="h-3 w-3" />}
                     </div>
                     <span
                       className={`text-sm ${
-                        checkStates[item.id]
-                          ? 'text-slate-700'
-                          : 'text-slate-500'
+                        checkStates[item.id] ? 'text-slate-700' : 'text-slate-500'
                       }`}
                     >
                       {item.label}

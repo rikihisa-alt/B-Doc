@@ -1,10 +1,7 @@
-// TODO: Supabase接続後にDBからデータ取得に切り替え
-// =============================================================================
-// B-Doc 文書詳細ページ（デモデータ版）
-// 左カラム: 文書情報・プレビュー・承認履歴・添付資料・操作ログ
-// 右カラム: ワークフロー進行状況・次のアクション・操作ボタン
-// =============================================================================
+'use client'
 
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,11 +12,20 @@ import { DocumentActions } from '@/components/document/document-actions'
 import { A4Preview } from '@/components/document/a4-preview'
 import {
   DOCUMENT_TYPE_LABELS,
+  DOCUMENT_STATUS,
   STATUS_BADGE_MAP,
   type DocumentStatus,
-  type ApprovalRecord,
-  type AuditLog,
 } from '@/types'
+import {
+  getDocument,
+  getApprovalRecords,
+  getAuditLogs,
+  saveDocument,
+  addApprovalRecord,
+  addAuditLog,
+  assignDocumentNumber,
+} from '@/lib/store'
+import type { LocalDocument, LocalApprovalRecord, LocalAuditLog } from '@/lib/store'
 import {
   ArrowLeft,
   FileText,
@@ -27,63 +33,39 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  RotateCcw,
   Shield,
   Paperclip,
   History,
   User,
   Calendar,
   Hash,
-  Building2,
   Lock,
   Printer,
 } from 'lucide-react'
 
-// =============================================================================
 // ステータスから次のアクションテキストを導出するヘルパー
-// =============================================================================
-
 function getNextActionText(status: DocumentStatus): string {
   switch (status) {
-    case 'draft':
-      return '作成者が編集・申請を行えます'
-    case 'pending_confirm':
-      return '確認者による確認が必要です'
-    case 'returned':
-      return '作成者が修正して再申請してください'
-    case 'pending_approval':
-      return '承認者による承認が必要です'
-    case 'approved':
-      return '発行担当者が発行処理を行えます'
-    case 'issuing':
-      return '発行処理を実行中です'
-    case 'issued':
-      return '発行済み - PDF確認・再発行・取消が可能です'
-    case 'sent':
-      return '送付済み'
-    case 'cancelled':
-      return 'この文書は取消されました'
-    case 'expired':
-      return 'この文書は期限切れです'
-    default:
-      return ''
+    case 'draft': return '作成者が編集・申請を行えます'
+    case 'pending_confirm': return '確認者による確認が必要です'
+    case 'returned': return '作成者が修正して再申請してください'
+    case 'pending_approval': return '承認者による承認が必要です'
+    case 'approved': return '発行担当者が発行処理を行えます'
+    case 'issuing': return '発行処理を実行中です'
+    case 'issued': return '発行済み - PDF確認・再発行・取消が可能です'
+    case 'sent': return '送付済み'
+    case 'cancelled': return 'この文書は取消されました'
+    case 'expired': return 'この文書は期限切れです'
+    default: return ''
   }
 }
 
-// =============================================================================
 // 承認タイムラインのアイコン判定
-// =============================================================================
-
 function getApprovalIcon(action: string) {
   switch (action) {
-    case 'approve':
-    case 'approved':
-    case 'confirm':
+    case 'approve': case 'approved': case 'confirm': case 'confirmed':
       return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-    case 'reject':
-    case 'rejected':
-    case 'return':
-    case 'returned':
+    case 'reject': case 'rejected': case 'return': case 'returned':
       return <XCircle className="h-4 w-4 text-red-600" />
     default:
       return <Clock className="h-4 w-4 text-gray-400" />
@@ -92,14 +74,9 @@ function getApprovalIcon(action: string) {
 
 function getApprovalBg(action: string) {
   switch (action) {
-    case 'approve':
-    case 'approved':
-    case 'confirm':
+    case 'approve': case 'approved': case 'confirm': case 'confirmed':
       return 'bg-emerald-100'
-    case 'reject':
-    case 'rejected':
-    case 'return':
-    case 'returned':
+    case 'reject': case 'rejected': case 'return': case 'returned':
       return 'bg-red-100'
     default:
       return 'bg-gray-100'
@@ -108,160 +85,203 @@ function getApprovalBg(action: string) {
 
 function getApprovalLabel(action: string) {
   switch (action) {
-    case 'approve':
-    case 'approved':
-      return '承認'
-    case 'confirm':
-      return '確認'
-    case 'reject':
-    case 'rejected':
-      return '却下'
-    case 'return':
-    case 'returned':
-      return '差戻し'
-    default:
-      return action
+    case 'approve': case 'approved': return '承認'
+    case 'confirm': case 'confirmed': return '確認'
+    case 'reject': case 'rejected': return '却下'
+    case 'return': case 'returned': return '差戻し'
+    default: return action
   }
 }
 
-// =============================================================================
-// デモデータ
-// =============================================================================
-
-const demoDocument = {
-  id: 'demo-001',
-  document_number: 'DOC-2024-0001',
-  title: '在職証明書（田中 太郎）',
-  document_type: 'employment_certificate',
-  status: 'pending_approval' as DocumentStatus,
-  created_at: '2024-12-01T10:00:00Z',
-  created_by: 'user-001',
-  updated_by: 'user-001',
-  issued_date: null as string | null,
-  template_id: 'tpl-001',
-  template_version_id: 'tv-001',
-  recipient: { name: '田中 太郎' },
-  metadata: { target_name: '田中 太郎', confidentiality: '社外秘' },
+// 操作ログのラベル変換
+const OPERATION_LABELS: Record<string, string> = {
+  create: '作成', update: '更新', status_change: 'ステータス変更',
+  approve: '承認', reject: '却下', return: '差戻し', issue: '発行',
+  send: '送付', cancel: '取消', download: 'ダウンロード', view: '閲覧',
 }
 
-const demoCreatorProfile = {
-  display_name: '管理者 太郎',
-  department: '人事部',
-  position: '主任',
-}
+export default function DocumentDetailPage() {
+  const params = useParams()
+  const router = useRouter()
+  const id = params.id as string
 
-const demoApprovals = [
-  {
-    id: 'apr-001',
-    step_order: 1,
-    action: 'confirm',
-    comment: '内容を確認しました。問題ありません。',
-    acted_at: '2024-12-02T14:30:00Z',
-    user_profiles: { display_name: '総務部 花子', position: '確認者' },
-  },
-  {
-    id: 'apr-002',
-    step_order: 2,
-    action: 'pending',
-    comment: null,
-    acted_at: null,
-    user_profiles: { display_name: '部長 三郎', position: '承認者' },
-  },
-]
+  const [doc, setDoc] = useState<LocalDocument | null>(null)
+  const [approvals, setApprovals] = useState<LocalApprovalRecord[]>([])
+  const [auditLogs, setAuditLogs] = useState<LocalAuditLog[]>([])
+  const [loaded, setLoaded] = useState(false)
 
-const demoAuditLogs = [
-  {
-    id: 'log-001',
-    created_at: '2024-12-01T10:00:00Z',
-    operation: 'create',
-    performed_by: 'user-001',
-    new_values: { status: 'draft' },
-  },
-  {
-    id: 'log-002',
-    created_at: '2024-12-01T10:30:00Z',
-    operation: 'status_change',
-    performed_by: 'user-001',
-    new_values: { status: 'pending_confirm' },
-  },
-  {
-    id: 'log-003',
-    created_at: '2024-12-02T14:30:00Z',
-    operation: 'approve',
-    performed_by: 'user-002',
-    new_values: { status: 'pending_approval' },
-  },
-]
+  // データ読み込み
+  const loadData = useCallback(() => {
+    const d = getDocument(id)
+    setDoc(d)
+    setApprovals(getApprovalRecords(id))
+    // 監査ログをこの文書のものだけフィルタ
+    const allLogs = getAuditLogs()
+    setAuditLogs(allLogs.filter((l) => l.target_id === id))
+    setLoaded(true)
+  }, [id])
 
-const demoProgressSteps = [
-  { label: '確認', status: 'completed' as const, actor: '総務部 花子', date: '2024/12/02 14:30' },
-  { label: '承認', status: 'current' as const, actor: undefined, date: undefined },
-  { label: '発行', status: 'pending' as const, actor: undefined, date: undefined },
-]
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
-const demoValuesMap: Record<string, string> = {
-  employee_name: '田中 太郎',
-  department: '開発部',
-  position: 'シニアエンジニア',
-  hire_date: '2020年4月1日',
-  company_name: '株式会社Backlly',
-}
+  // ステータス遷移アクション
+  const handleStatusChange = useCallback(
+    (newStatus: DocumentStatus, operation: string, comment?: string) => {
+      if (!doc) return
+      const prevStatus = doc.status
+      const updated: LocalDocument = { ...doc, status: newStatus, updated_at: new Date().toISOString() }
 
-const demoBodyTemplate = '{{company_name}}に在籍していることを証明します。\n\n氏名: {{employee_name}}\n部署: {{department}}\n役職: {{position}}\n入社日: {{hire_date}}\n\n上記の者は、当社に在籍していることを証明いたします。'
+      // 発行時: 文書番号を採番
+      if (newStatus === DOCUMENT_STATUS.ISSUED) {
+        const docNum = assignDocumentNumber(doc)
+        updated.document_number = docNum
+        updated.issued_at = new Date().toISOString()
+        updated.issued_by = 'デモユーザー'
+      }
 
-// =============================================================================
-// メインページコンポーネント
-// =============================================================================
+      // 取消時: 取消理由を保存
+      if (newStatus === DOCUMENT_STATUS.CANCELLED) {
+        updated.cancelled_at = new Date().toISOString()
+        updated.cancel_reason = comment || '取消'
+      }
 
-export default function DocumentDetailPage({
-  params: _params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const id = 'demo-001'
-  const document = demoDocument
-  const approvals = demoApprovals
-  const auditLogs = demoAuditLogs
-  const creatorProfile = demoCreatorProfile
+      saveDocument(updated)
 
-  // ---------- 派生値 ----------
-  const status = document.status as DocumentStatus
+      // 承認レコード追加（承認操作の場合）
+      if (operation === 'approve') {
+        addApprovalRecord({
+          document_id: id,
+          step_order: approvals.length + 1,
+          approver_name: 'デモユーザー',
+          action: 'approved',
+          comment: comment || '',
+          acted_at: new Date().toISOString(),
+        })
+      }
+
+      // 監査ログ追加
+      addAuditLog({
+        user_name: 'デモユーザー',
+        user_role: 'creator',
+        target_type: 'document',
+        target_id: id,
+        target_label: doc.title,
+        operation,
+        before_value: { status: prevStatus },
+        after_value: { status: newStatus },
+        success: true,
+        comment: comment || null,
+      })
+
+      loadData()
+    },
+    [doc, id, approvals.length, loadData]
+  )
+
+  // PDF ダウンロード
+  const handleDownloadPdf = async () => {
+    if (!doc) return
+    try {
+      let body = doc.body_template
+      for (const [key, value] of Object.entries(doc.values)) {
+        body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value)
+      }
+
+      const res = await fetch('/api/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: doc.title,
+          document_number: doc.document_number,
+          document_type: doc.document_type,
+          values: doc.values,
+          body_template: doc.body_template,
+          issued_at: doc.issued_at || new Date().toISOString(),
+        }),
+      })
+
+      if (!res.ok) throw new Error('PDF生成に失敗しました')
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${doc.document_number || doc.title}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      alert('PDF生成エラー: ' + (error instanceof Error ? error.message : '不明なエラー'))
+    }
+  }
+
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm text-gray-400">読み込み中...</p>
+      </div>
+    )
+  }
+
+  if (!doc) {
+    return (
+      <div className="space-y-4">
+        <Link href="/dashboard/documents" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
+          <ArrowLeft className="h-4 w-4" />
+          一覧へ
+        </Link>
+        <p className="text-sm text-gray-500">文書が見つかりません</p>
+      </div>
+    )
+  }
+
+  const status = doc.status as DocumentStatus
   const badgeInfo = STATUS_BADGE_MAP[status]
-  const isOwner = true
+  const valuesMap = doc.values
+  const bodyTemplate = doc.body_template
 
-  const valuesMap = demoValuesMap
-  const bodyTemplate = demoBodyTemplate
-  const progressSteps = demoProgressSteps
+  // ワークフロー進行状況を承認レコードから構築
+  const progressSteps = (() => {
+    const steps: { label: string; status: 'completed' | 'current' | 'pending'; actor?: string; date?: string }[] = []
 
-  // 機密レベルバッジ
-  const confidentiality = (document.metadata as Record<string, unknown>)?.confidentiality as string | undefined
+    // 確認ステップ
+    const confirmRecord = approvals.find((a) => a.action === 'confirmed')
+    if (confirmRecord) {
+      steps.push({ label: '確認', status: 'completed', actor: confirmRecord.approver_name, date: new Date(confirmRecord.acted_at).toLocaleString('ja-JP') })
+    } else if (status === 'pending_confirm') {
+      steps.push({ label: '確認', status: 'current' })
+    }
 
-  // ---------- 操作ログのラベル変換 ----------
-  const OPERATION_LABELS: Record<string, string> = {
-    create: '作成',
-    update: '更新',
-    status_change: 'ステータス変更',
-    approve: '承認',
-    reject: '却下',
-    return: '差戻し',
-    issue: '発行',
-    send: '送付',
-    cancel: '取消',
-    download: 'ダウンロード',
-    view: '閲覧',
-  }
+    // 承認ステップ
+    const approveRecord = approvals.find((a) => a.action === 'approved')
+    if (approveRecord) {
+      steps.push({ label: '承認', status: 'completed', actor: approveRecord.approver_name, date: new Date(approveRecord.acted_at).toLocaleString('ja-JP') })
+    } else if (status === 'pending_approval') {
+      steps.push({ label: '承認', status: 'current' })
+    } else if (!approveRecord && steps.length > 0) {
+      steps.push({ label: '承認', status: 'pending' })
+    }
 
-  // ==========================================================================
-  // レンダリング
-  // ==========================================================================
+    // 発行ステップ
+    if (status === 'issued' || status === 'sent') {
+      steps.push({ label: '発行', status: 'completed', actor: doc.issued_by || undefined, date: doc.issued_at ? new Date(doc.issued_at).toLocaleString('ja-JP') : undefined })
+    } else if (status === 'approved') {
+      steps.push({ label: '発行', status: 'current' })
+    } else if (steps.length > 0) {
+      steps.push({ label: '発行', status: 'pending' })
+    }
+
+    return steps
+  })()
+
   return (
     <div className="space-y-6">
-      {/* ================================================================ */}
       {/* ページヘッダー */}
-      {/* ================================================================ */}
       <div className="space-y-3">
         <Link
-          href="/documents"
+          href="/dashboard/documents"
           className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -272,30 +292,21 @@ export default function DocumentDetailPage({
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <p className="font-mono text-sm text-gray-500">
-                {document.document_number ?? '未採番'}
+                {doc.document_number ?? '未採番'}
               </p>
               <StatusBadge status={status} />
             </div>
-            <h1 className="text-xl font-bold text-gray-900">
-              {document.title}
-            </h1>
-            <p className="text-sm text-gray-500">
-              作成者: {creatorProfile?.display_name ?? '不明'}
-              {creatorProfile?.department ? ` (${creatorProfile.department})` : ''}
-            </p>
+            <h1 className="text-xl font-bold text-gray-900">{doc.title}</h1>
+            <p className="text-sm text-gray-500">作成者: {doc.created_by}</p>
           </div>
         </div>
       </div>
 
-      {/* ================================================================ */}
       {/* 2カラムレイアウト */}
-      {/* ================================================================ */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* ============================================ */}
         {/* 左カラム: メインコンテンツ (2/3) */}
-        {/* ============================================ */}
         <div className="lg:col-span-2 space-y-6">
-          {/* --- 文書情報セクション --- */}
+          {/* 文書情報セクション */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -309,35 +320,28 @@ export default function DocumentDetailPage({
                   <Hash className="mt-0.5 h-3.5 w-3.5 text-gray-400" />
                   <div>
                     <dt className="text-gray-500">文書番号</dt>
-                    <dd className="font-mono font-medium">{document.document_number ?? '未採番'}</dd>
+                    <dd className="font-mono font-medium">{doc.document_number ?? '未採番'}</dd>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <FileText className="mt-0.5 h-3.5 w-3.5 text-gray-400" />
                   <div>
                     <dt className="text-gray-500">文書種別</dt>
-                    <dd>{DOCUMENT_TYPE_LABELS[document.document_type] ?? document.document_type}</dd>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <User className="mt-0.5 h-3.5 w-3.5 text-gray-400" />
-                  <div>
-                    <dt className="text-gray-500">対象者</dt>
-                    <dd>{(document.metadata as Record<string, unknown>)?.target_name as string ?? '-'}</dd>
+                    <dd>{DOCUMENT_TYPE_LABELS[doc.document_type] ?? doc.document_type}</dd>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <User className="mt-0.5 h-3.5 w-3.5 text-gray-400" />
                   <div>
                     <dt className="text-gray-500">作成者</dt>
-                    <dd>{creatorProfile?.display_name ?? '-'}</dd>
+                    <dd>{doc.created_by}</dd>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <Calendar className="mt-0.5 h-3.5 w-3.5 text-gray-400" />
                   <div>
                     <dt className="text-gray-500">作成日</dt>
-                    <dd>{new Date(document.created_at).toLocaleDateString('ja-JP')}</dd>
+                    <dd>{new Date(doc.created_at).toLocaleDateString('ja-JP')}</dd>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
@@ -345,14 +349,10 @@ export default function DocumentDetailPage({
                   <div>
                     <dt className="text-gray-500">機密レベル</dt>
                     <dd>
-                      {confidentiality ? (
-                        <Badge variant="outline" className="text-xs">
-                          <Shield className="mr-1 h-3 w-3" />
-                          {confidentiality}
-                        </Badge>
-                      ) : (
-                        <span className="text-gray-400">未設定</span>
-                      )}
+                      <Badge variant="outline" className="text-xs">
+                        <Shield className="mr-1 h-3 w-3" />
+                        {doc.confidentiality}
+                      </Badge>
                     </dd>
                   </div>
                 </div>
@@ -360,7 +360,7 @@ export default function DocumentDetailPage({
             </CardContent>
           </Card>
 
-          {/* --- 文書プレビューセクション --- */}
+          {/* 文書プレビューセクション */}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -370,11 +370,9 @@ export default function DocumentDetailPage({
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {status === 'issued' && (
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/api/documents/${id}/pdf`}>
-                        <Download className="mr-1.5 h-3.5 w-3.5" />
-                        PDF ダウンロード
-                      </Link>
+                    <Button variant="outline" size="sm" onClick={handleDownloadPdf}>
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      PDF ダウンロード
                     </Button>
                   )}
                   <Button variant="ghost" size="sm">
@@ -388,11 +386,11 @@ export default function DocumentDetailPage({
               <A4Preview
                 bodyTemplate={bodyTemplate}
                 values={valuesMap}
-                title={document.title}
-                documentNumber={document.document_number ?? undefined}
+                title={doc.title}
+                documentNumber={doc.document_number ?? undefined}
                 issuedAt={
-                  document.issued_date
-                    ? new Date(document.issued_date).toLocaleDateString('ja-JP')
+                  doc.issued_at
+                    ? new Date(doc.issued_at).toLocaleDateString('ja-JP')
                     : undefined
                 }
                 watermark={
@@ -406,7 +404,7 @@ export default function DocumentDetailPage({
             </CardContent>
           </Card>
 
-          {/* --- 承認履歴セクション --- */}
+          {/* 承認履歴セクション */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -415,47 +413,32 @@ export default function DocumentDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {approvals && approvals.length > 0 ? (
+              {approvals.length > 0 ? (
                 <div className="space-y-0">
-                  {approvals.map((approval: Record<string, unknown>, index: number) => {
+                  {approvals.map((approval, index) => {
                     const isLast = index === approvals.length - 1
-                    const profile = approval.user_profiles as { display_name: string; position?: string } | null
-                    const action = String(approval.action)
-
                     return (
-                      <div key={String(approval.id)} className="relative flex gap-3">
-                        {/* タイムライン線 */}
+                      <div key={approval.id} className="relative flex gap-3">
                         {!isLast && (
                           <div className="absolute left-[15px] top-[32px] h-[calc(100%-8px)] w-0.5 bg-gray-200" />
                         )}
-
-                        {/* アイコン */}
-                        <div className={`relative z-10 mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${getApprovalBg(action)}`}>
-                          {getApprovalIcon(action)}
+                        <div className={`relative z-10 mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${getApprovalBg(approval.action)}`}>
+                          {getApprovalIcon(approval.action)}
                         </div>
-
-                        {/* コンテンツ */}
                         <div className={`flex-1 ${isLast ? 'pb-0' : 'pb-6'}`}>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-gray-900">
-                              {profile?.display_name ?? `ステップ ${approval.step_order}`}
+                              {approval.approver_name}
                             </span>
-                            {profile?.position ? (
-                              <span className="text-xs text-gray-500">({String(profile.position)})</span>
-                            ) : null}
                             <Badge variant="outline" className="text-xs">
-                              {getApprovalLabel(action)}
+                              {getApprovalLabel(approval.action)}
                             </Badge>
                           </div>
-                          {approval.comment ? (
-                            <p className="mt-1 text-sm text-gray-600">
-                              {String(approval.comment)}
-                            </p>
-                          ) : null}
+                          {approval.comment && (
+                            <p className="mt-1 text-sm text-gray-600">{approval.comment}</p>
+                          )}
                           <p className="mt-1 text-xs text-gray-400">
-                            {approval.acted_at
-                              ? new Date(String(approval.acted_at)).toLocaleString('ja-JP')
-                              : '未処理'}
+                            {new Date(approval.acted_at).toLocaleString('ja-JP')}
                           </p>
                         </div>
                       </div>
@@ -463,14 +446,12 @@ export default function DocumentDetailPage({
                   })}
                 </div>
               ) : (
-                <p className="py-6 text-center text-sm text-gray-500">
-                  承認履歴はありません
-                </p>
+                <p className="py-6 text-center text-sm text-gray-500">承認履歴はありません</p>
               )}
             </CardContent>
           </Card>
 
-          {/* --- 添付資料セクション --- */}
+          {/* 添付資料セクション */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -479,13 +460,11 @@ export default function DocumentDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="py-4 text-center text-sm text-gray-400">
-                添付資料はありません
-              </p>
+              <p className="py-4 text-center text-sm text-gray-400">添付資料はありません</p>
             </CardContent>
           </Card>
 
-          {/* --- 操作ログセクション --- */}
+          {/* 操作ログセクション */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -494,7 +473,7 @@ export default function DocumentDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {auditLogs && auditLogs.length > 0 ? (
+              {auditLogs.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -506,28 +485,21 @@ export default function DocumentDetailPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {auditLogs.map((log: Record<string, unknown>) => (
-                        <tr key={String(log.id)} className="border-b last:border-0">
+                      {auditLogs.map((log) => (
+                        <tr key={log.id} className="border-b last:border-0">
                           <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">
-                            {new Date(String(log.created_at)).toLocaleString('ja-JP', {
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
+                            {new Date(log.executed_at).toLocaleString('ja-JP', {
+                              month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
                             })}
                           </td>
                           <td className="px-4 py-2">
                             <Badge variant="outline" className="text-xs">
-                              {OPERATION_LABELS[String(log.operation)] ?? String(log.operation)}
+                              {OPERATION_LABELS[log.operation] ?? log.operation}
                             </Badge>
                           </td>
-                          <td className="px-4 py-2 text-xs text-gray-600">
-                            {String(log.performed_by).slice(0, 8)}...
-                          </td>
+                          <td className="px-4 py-2 text-xs text-gray-600">{log.user_name}</td>
                           <td className="px-4 py-2 text-xs text-gray-500 max-w-[200px] truncate">
-                            {log.new_values
-                              ? JSON.stringify(log.new_values).slice(0, 60)
-                              : '-'}
+                            {log.after_value ? JSON.stringify(log.after_value).slice(0, 60) : '-'}
                           </td>
                         </tr>
                       ))}
@@ -535,19 +507,15 @@ export default function DocumentDetailPage({
                   </table>
                 </div>
               ) : (
-                <p className="py-4 text-center text-sm text-gray-400">
-                  操作ログはありません
-                </p>
+                <p className="py-4 text-center text-sm text-gray-400">操作ログはありません</p>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* ============================================ */}
         {/* 右カラム: 操作パネル (1/3) */}
-        {/* ============================================ */}
         <div className="space-y-6">
-          {/* --- ワークフロー進行状況 --- */}
+          {/* ワークフロー進行状況 */}
           {progressSteps.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
@@ -559,28 +527,68 @@ export default function DocumentDetailPage({
             </Card>
           )}
 
-          {/* --- 次のアクション --- */}
+          {/* 次のアクション */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">次のアクション</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">
-                {getNextActionText(status)}
-              </p>
+              <p className="text-sm text-gray-600">{getNextActionText(status)}</p>
 
               {/* アクションボタン */}
-              <DocumentActions
-                documentId={id}
-                documentNumber={document.document_number ?? ''}
-                status={status}
-                isOwner={isOwner}
-                userId={'demo-user-001'}
-              />
+              <div className="space-y-2">
+                {/* 下書き → 申請する */}
+                {(status === 'draft' || status === 'returned') && (
+                  <Button
+                    className="w-full"
+                    onClick={() => handleStatusChange(DOCUMENT_STATUS.PENDING_APPROVAL, 'status_change')}
+                  >
+                    申請する
+                  </Button>
+                )}
+
+                {/* 承認待ち → 承認する */}
+                {status === 'pending_approval' && (
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    onClick={() => handleStatusChange(DOCUMENT_STATUS.APPROVED, 'approve', '承認しました')}
+                  >
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                    承認する
+                  </Button>
+                )}
+
+                {/* 承認済み → 発行する */}
+                {status === 'approved' && (
+                  <Button
+                    className="w-full"
+                    onClick={() => handleStatusChange(DOCUMENT_STATUS.ISSUED, 'issue')}
+                  >
+                    発行する
+                  </Button>
+                )}
+
+                {/* 取消ボタン（発行済み以外のアクティブなステータスで表示） */}
+                {(['draft', 'pending_confirm', 'pending_approval', 'approved', 'returned'] as DocumentStatus[]).includes(status) && (
+                  <Button
+                    variant="outline"
+                    className="w-full text-red-600 hover:text-red-700 hover:border-red-300"
+                    onClick={() => {
+                      const reason = prompt('取消理由を入力してください')
+                      if (reason) {
+                        handleStatusChange(DOCUMENT_STATUS.CANCELLED, 'cancel', reason)
+                      }
+                    }}
+                  >
+                    <XCircle className="mr-1.5 h-4 w-4" />
+                    取消
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
 
-          {/* --- 発行済み文書の追加情報 --- */}
+          {/* 発行済み文書の追加情報 */}
           {(status === 'issued' || status === 'sent') && (
             <Card>
               <CardHeader className="pb-3">
@@ -590,28 +598,20 @@ export default function DocumentDetailPage({
                 <dl className="space-y-3 text-sm">
                   <div>
                     <dt className="text-gray-500">発行番号</dt>
-                    <dd className="font-mono font-medium">
-                      {document.document_number ?? '-'}
-                    </dd>
+                    <dd className="font-mono font-medium">{doc.document_number ?? '-'}</dd>
                   </div>
                   <div>
                     <dt className="text-gray-500">発行日時</dt>
-                    <dd>
-                      {document.issued_date
-                        ? new Date(document.issued_date).toLocaleString('ja-JP')
-                        : '-'}
-                    </dd>
+                    <dd>{doc.issued_at ? new Date(doc.issued_at).toLocaleString('ja-JP') : '-'}</dd>
                   </div>
                   <div>
                     <dt className="text-gray-500">発行者</dt>
-                    <dd>{document.updated_by?.slice(0, 8) ?? '-'}...</dd>
+                    <dd>{doc.issued_by ?? '-'}</dd>
                   </div>
                   <div className="pt-2">
-                    <Button variant="outline" size="sm" className="w-full" asChild>
-                      <Link href={`/api/documents/${id}/pdf`}>
-                        <Download className="mr-1.5 h-3.5 w-3.5" />
-                        PDF ダウンロード
-                      </Link>
+                    <Button variant="outline" size="sm" className="w-full" onClick={handleDownloadPdf}>
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      PDF ダウンロード
                     </Button>
                   </div>
                 </dl>
@@ -619,7 +619,7 @@ export default function DocumentDetailPage({
             </Card>
           )}
 
-          {/* --- 取消済み文書の取消理由 --- */}
+          {/* 取消済み文書の取消理由 */}
           {status === 'cancelled' && (
             <Card className="border-red-200">
               <CardHeader className="pb-3">
@@ -627,7 +627,7 @@ export default function DocumentDetailPage({
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-gray-600">
-                  {(document.metadata as Record<string, unknown>)?.cancel_reason as string ?? '取消理由の記載なし'}
+                  {doc.cancel_reason ?? '取消理由の記載なし'}
                 </p>
               </CardContent>
             </Card>
