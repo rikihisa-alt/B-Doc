@@ -104,7 +104,7 @@ export default function ApprovalsPage() {
                       className="cursor-pointer transition-colors hover:bg-slate-50"
                     >
                       <td className="py-3.5 pr-4">
-                        <Link href={`/dashboard/approvals/${doc.id}`} className="block">
+                        <Link href={`/approvals/${doc.id}`} className="block">
                           <p className="font-medium text-slate-900">{doc.title}</p>
                           {doc.document_number && (
                             <p className="mt-0.5 text-xs text-slate-400">{doc.document_number}</p>
@@ -133,7 +133,7 @@ export default function ApprovalsPage() {
                       </td>
                       <td className="py-3.5">
                         <Link
-                          href={`/dashboard/approvals/${doc.id}`}
+                          href={`/approvals/${doc.id}`}
                           className="text-slate-400 hover:text-slate-600"
                         >
                           <ChevronRight className="h-4 w-4" />

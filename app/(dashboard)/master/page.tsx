@@ -10,25 +10,25 @@ const MASTER_ITEMS = [
     icon: Building2,
     label: '会社・事業所',
     description: '会社情報・事業所の登録・管理',
-    href: '/dashboard/master/organizations',
+    href: '/master/organizations',
   },
   {
     icon: Users,
     label: '従業員',
     description: '従業員情報の登録・管理',
-    href: '/dashboard/master/employees',
+    href: '/master/employees',
   },
   {
     icon: Briefcase,
     label: '取引先',
     description: '取引先企業の登録・管理',
-    href: '/dashboard/master/clients',
+    href: '/master/clients',
   },
   {
     icon: Stamp,
     label: '印影',
     description: '電子印影の登録・管理',
-    href: '/dashboard/master/seals',
+    href: '/master/seals',
   },
 ]
 

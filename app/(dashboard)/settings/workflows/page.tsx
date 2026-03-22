@@ -207,7 +207,7 @@ export default function WorkflowsPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push('/dashboard/settings')}
+            onClick={() => router.push('/settings')}
           >
             <ChevronLeft className="mr-1 h-4 w-4" />
             設定に戻る

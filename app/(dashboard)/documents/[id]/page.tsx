@@ -232,7 +232,7 @@ export default function DocumentDetailPage() {
   if (!doc) {
     return (
       <div className="space-y-4">
-        <Link href="/dashboard/documents" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
+        <Link href="/documents" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
           <ArrowLeft className="h-4 w-4" />
           一覧へ
         </Link>
@@ -285,7 +285,7 @@ export default function DocumentDetailPage() {
       {/* ページヘッダー */}
       <div className="space-y-3">
         <Link
-          href="/dashboard/documents"
+          href="/documents"
           className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />

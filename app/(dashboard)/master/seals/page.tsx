@@ -98,7 +98,7 @@ export default function SealsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
-            href="/dashboard/master"
+            href="/master"
             className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
           >
             <ArrowLeft className="h-4 w-4" />

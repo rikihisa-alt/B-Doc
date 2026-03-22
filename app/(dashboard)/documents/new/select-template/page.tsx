@@ -42,14 +42,14 @@ export default function SelectTemplatePage() {
   // テンプレートで作成ボタン押下時
   const handleCreate = () => {
     if (!selectedId) return
-    router.push(`/dashboard/documents/new?template_id=${selectedId}`)
+    router.push(`/documents/new?template_id=${selectedId}`)
   }
 
   return (
     <div className="flex h-[calc(100vh-6rem)] flex-col">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 pb-4">
-        <Link href="/dashboard/documents">
+        <Link href="/documents">
           <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
             <ChevronLeft className="h-4 w-4" />
             戻る

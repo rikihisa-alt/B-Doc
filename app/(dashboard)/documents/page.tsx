@@ -198,7 +198,7 @@ export default function DocumentsPage() {
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900">文書一覧</h1>
-        <Link href="/dashboard/documents/new/select-template">
+        <Link href="/documents/new/select-template">
           <Button size="sm">
             <Plus className="mr-1.5 h-4 w-4" />
             新規作成
@@ -399,7 +399,7 @@ export default function DocumentsPage() {
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <Link href={`/dashboard/documents/${doc.id}`}>
+                        <Link href={`/documents/${doc.id}`}>
                           <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs">
                             開く
                           </Button>

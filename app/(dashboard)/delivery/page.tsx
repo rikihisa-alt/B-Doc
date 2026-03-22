@@ -154,7 +154,7 @@ export default function DeliveryPage() {
                       </td>
                       <td className="px-4 py-3.5">
                         <Link
-                          href={`/dashboard/documents/${doc.id}`}
+                          href={`/documents/${doc.id}`}
                           className="font-medium text-slate-900 hover:text-blue-600 hover:underline"
                         >
                           {doc.title}
@@ -176,7 +176,7 @@ export default function DeliveryPage() {
                       <td className="px-6 py-3.5">
                         <div className="flex items-center justify-end gap-1">
                           <Button asChild variant="ghost" size="sm" className="h-8 text-xs">
-                            <Link href={`/dashboard/documents/${doc.id}`}>
+                            <Link href={`/documents/${doc.id}`}>
                               詳細
                             </Link>
                           </Button>

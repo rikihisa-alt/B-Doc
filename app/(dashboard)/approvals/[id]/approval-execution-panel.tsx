@@ -129,7 +129,7 @@ export function ApprovalExecutionPanel({
         comment: null,
       })
 
-      router.push('/dashboard/approvals')
+      router.push('/approvals')
     } catch (err) {
       setError(err instanceof Error ? err.message : '承認処理中にエラーが発生しました')
     } finally {
@@ -178,7 +178,7 @@ export function ApprovalExecutionPanel({
         comment: returnReason.trim(),
       })
 
-      router.push('/dashboard/approvals')
+      router.push('/approvals')
     } catch (err) {
       setError(err instanceof Error ? err.message : '差戻し処理中にエラーが発生しました')
     } finally {

@@ -159,7 +159,7 @@ export default function SettingsPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           {isAdmin && (
             <Link
-              href="/dashboard/settings/permissions"
+              href="/settings/permissions"
               className="group flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md"
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50">
@@ -175,7 +175,7 @@ export default function SettingsPage() {
 
           {isAdmin && (
             <Link
-              href="/dashboard/settings/workflows"
+              href="/settings/workflows"
               className="group flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md"
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50">
@@ -191,7 +191,7 @@ export default function SettingsPage() {
 
           {(isAdmin || userRoles.includes('audit_viewer')) && (
             <Link
-              href="/dashboard/audit-logs"
+              href="/audit-logs"
               className="group flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md"
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
@@ -206,7 +206,7 @@ export default function SettingsPage() {
           )}
 
           <Link
-            href="/dashboard/settings"
+            href="/settings"
             className="group flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">

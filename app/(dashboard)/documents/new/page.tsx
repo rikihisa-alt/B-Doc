@@ -392,7 +392,7 @@ export default function NewDocumentPage() {
     setIsDiscarding(true)
     try {
       setHasUnsavedChanges(false)
-      router.push('/dashboard/documents')
+      router.push('/documents')
     } finally {
       setIsDiscarding(false)
     }
@@ -448,7 +448,7 @@ export default function NewDocumentPage() {
       }
 
       setHasUnsavedChanges(false)
-      router.push(`/dashboard/documents/${currentDraftId}`)
+      router.push(`/documents/${currentDraftId}`)
     } catch {
       alert('申請に失敗しました。再度お試しください。')
     } finally {
@@ -472,7 +472,7 @@ export default function NewDocumentPage() {
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
             <Link
-              href="/dashboard/documents"
+              href="/documents"
               className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />

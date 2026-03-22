@@ -124,7 +124,7 @@ export default function DashboardPage() {
       <div className="rounded-lg border bg-white">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold text-gray-900">最近の文書</h2>
-          <Link href="/dashboard/documents">
+          <Link href="/documents">
             <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-gray-500">
               すべて表示
               <ChevronRight className="h-3.5 w-3.5" />
@@ -153,7 +153,7 @@ export default function DashboardPage() {
                   <td className="px-4 py-2"><StatusBadge status={doc.status} /></td>
                   <td className="px-4 py-2 text-xs text-gray-500">{new Date(doc.created_at).toLocaleDateString('ja-JP')}</td>
                   <td className="px-4 py-2 text-right">
-                    <Link href={`/dashboard/documents/${doc.id}`}>
+                    <Link href={`/documents/${doc.id}`}>
                       <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">開く</Button>
                     </Link>
                   </td>
@@ -175,14 +175,14 @@ export default function DashboardPage() {
       <div className="flex items-center gap-3 rounded-lg border bg-white px-4 py-3">
         <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">クイックアクション</span>
         <div className="mx-2 h-4 w-px bg-gray-200" />
-        <Link href="/dashboard/documents/new/select-template">
+        <Link href="/documents/new/select-template">
           <Button size="sm" className="h-8 gap-1.5">
             <Plus className="h-3.5 w-3.5" />
             新規文書作成
           </Button>
         </Link>
         {isAdmin && (
-          <Link href="/dashboard/templates">
+          <Link href="/templates">
             <Button variant="outline" size="sm" className="h-8 gap-1.5">
               <Settings className="h-3.5 w-3.5" />
               テンプレート管理
