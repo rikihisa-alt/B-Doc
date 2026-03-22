@@ -50,7 +50,7 @@ export default function DashboardPage() {
     {
       label: '承認待ち',
       count: pendingApprovalCount,
-      href: '/dashboard/approvals',
+      href: '/approvals',
       color: 'text-blue-700',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-200',
@@ -60,7 +60,7 @@ export default function DashboardPage() {
     {
       label: '差戻し',
       count: returnedCount,
-      href: '/dashboard/documents?status=returned',
+      href: '/documents?status=returned',
       color: 'text-red-700',
       bgColor: 'bg-red-50',
       borderColor: 'border-red-300',
@@ -70,7 +70,7 @@ export default function DashboardPage() {
     {
       label: '下書き',
       count: draftCount,
-      href: '/dashboard/documents?status=draft',
+      href: '/documents?status=draft',
       color: 'text-gray-700',
       bgColor: 'bg-gray-50',
       borderColor: 'border-gray-200',
