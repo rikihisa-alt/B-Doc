@@ -1,546 +1,277 @@
 'use client'
 
+/**
+ * 新規テンプレート作成ページ
+ * テンプレートの基本情報を入力し、作成後にエディタページへリダイレクトする
+ */
+
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { VariableEditor } from '@/components/template/variable-editor'
-import { TemplatePreview } from '@/components/template/template-preview'
-import type { PreviewBlock } from '@/components/template/template-preview'
-import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Save, Plus, Trash2, GripVertical } from 'lucide-react'
-import Link from 'next/link'
-import type { TemplateVariable, TemplateLayout } from '@/types'
+  saveTemplate,
+} from '@/lib/store'
+import type {
+  LocalTemplate,
+  TemplateBlock,
+} from '@/lib/store'
+import {
+  ChevronLeft,
+  Plus,
+  FileText,
+  Zap,
+} from 'lucide-react'
 
 // ============================================================
-// ブロック種別の表示ラベル（ローカル定義）
+// テンプレートプリセット
 // ============================================================
-type BlockType = PreviewBlock['type']
 
-const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
-  heading: '見出し',
-  paragraph: '段落',
-  list: 'リスト',
-  table: 'テーブル',
-  divider: '区切り線',
-  variable: '変数挿入',
+interface TemplatePreset {
+  name: string
+  document_type: string
+  description: string
+  icon: React.ReactNode
+  blocks: TemplateBlock[]
 }
 
-// ============================================================
-// テンプレートカテゴリの選択肢
-// ============================================================
-const CATEGORY_OPTIONS = [
-  { value: 'invoice', label: '請求書' },
-  { value: 'quotation', label: '見積書' },
-  { value: 'contract', label: '契約書' },
-  { value: 'report', label: '報告書' },
-  { value: 'certificate', label: '証明書' },
-  { value: 'notice', label: '通知書' },
-  { value: 'manual', label: 'マニュアル' },
-  { value: 'other', label: 'その他' },
-]
-
-// ============================================================
-// デフォルトレイアウト
-// ============================================================
-const DEFAULT_LAYOUT: TemplateLayout = {
-  paper_size: 'A4',
-  orientation: 'portrait',
-  margins: { top: 20, right: 20, bottom: 20, left: 20 },
-  header: { enabled: true, content: null, height: 20 },
-  footer: { enabled: true, content: null, height: 15 },
+/** 空テンプレート */
+const EMPTY_PRESET: TemplatePreset = {
+  name: '',
+  document_type: 'other',
+  description: '',
+  icon: <FileText className="h-6 w-6" />,
+  blocks: [],
 }
 
+/** 証明書プリセット */
+const CERTIFICATE_PRESET: TemplatePreset = {
+  name: '在職証明書',
+  document_type: 'employment_cert',
+  description: '従業員の在職を証明する文書',
+  icon: <FileText className="h-6 w-6 text-blue-500" />,
+  blocks: [
+    { id: 'new-b-1', type: 'date_line', order: 0, content: '{{issue_date}}', align: 'right' },
+    { id: 'new-b-2', type: 'heading', order: 1, content: '在 職 証 明 書', level: 1, align: 'center', letterSpacing: 16 },
+    { id: 'new-b-3', type: 'spacer', order: 2, spacerHeight: 10 },
+    { id: 'new-b-4', type: 'paragraph', order: 3, content: '下記の者は、当社に在籍していることを証明いたします。', align: 'left', fontSize: 12 },
+    { id: 'new-b-5', type: 'spacer', order: 4, spacerHeight: 8 },
+    { id: 'new-b-6', type: 'variable_line', order: 5, variableLabel: '氏名', variableKey: 'employee_name', variableType: 'text', variableRequired: true },
+    { id: 'new-b-7', type: 'variable_line', order: 6, variableLabel: '所属部署', variableKey: 'department', variableType: 'text', variableRequired: true },
+    { id: 'new-b-8', type: 'variable_line', order: 7, variableLabel: '雇用形態', variableKey: 'employment_type', variableType: 'text', variableRequired: true },
+    { id: 'new-b-9', type: 'spacer', order: 8, spacerHeight: 10 },
+    { id: 'new-b-10', type: 'paragraph', order: 9, content: '以上', align: 'right', fontSize: 12 },
+    { id: 'new-b-11', type: 'spacer', order: 10, spacerHeight: 15 },
+    { id: 'new-b-12', type: 'signature', order: 11, companyName: '', representativeTitle: '代表取締役', representativeName: '' },
+  ],
+}
+
+/** 請求書プリセット */
+const INVOICE_PRESET: TemplatePreset = {
+  name: '請求書',
+  document_type: 'invoice',
+  description: '取引先への請求書',
+  icon: <FileText className="h-6 w-6 text-green-500" />,
+  blocks: [
+    { id: 'new-i-1', type: 'date_line', order: 0, content: '{{issue_date}}', align: 'right' },
+    { id: 'new-i-2', type: 'heading', order: 1, content: '請 求 書', level: 1, align: 'center', letterSpacing: 16 },
+    { id: 'new-i-3', type: 'spacer', order: 2, spacerHeight: 8 },
+    { id: 'new-i-4', type: 'address_block', order: 3, addressCompany: '{{client_name}}', addressSuffix: '御中' },
+    { id: 'new-i-5', type: 'spacer', order: 4, spacerHeight: 8 },
+    { id: 'new-i-6', type: 'paragraph', order: 5, content: '下記の通りご請求申し上げます。', align: 'left', fontSize: 12 },
+    { id: 'new-i-7', type: 'divider', order: 6, dividerStyle: 'solid', dividerThickness: 1 },
+    { id: 'new-i-8', type: 'table', order: 7, tableRows: 2, tableCols: 3, tableHeaders: ['摘要', '数量', '金額'], tableCells: [['', '1', ''], ['小計', '', '']] },
+    { id: 'new-i-9', type: 'spacer', order: 8, spacerHeight: 5 },
+    { id: 'new-i-10', type: 'variable_line', order: 9, variableLabel: '支払期限', variableKey: 'due_date', variableType: 'date', variableRequired: true },
+    { id: 'new-i-11', type: 'signature', order: 10, companyName: '', representativeTitle: '代表取締役', representativeName: '' },
+  ],
+}
+
+/** 見積書プリセット */
+const QUOTATION_PRESET: TemplatePreset = {
+  name: '見積書',
+  document_type: 'quotation',
+  description: '取引先への見積書',
+  icon: <FileText className="h-6 w-6 text-amber-500" />,
+  blocks: [
+    { id: 'new-q-1', type: 'date_line', order: 0, content: '{{issue_date}}', align: 'right' },
+    { id: 'new-q-2', type: 'heading', order: 1, content: '見 積 書', level: 1, align: 'center', letterSpacing: 16 },
+    { id: 'new-q-3', type: 'spacer', order: 2, spacerHeight: 8 },
+    { id: 'new-q-4', type: 'address_block', order: 3, addressCompany: '{{client_name}}', addressSuffix: '御中' },
+    { id: 'new-q-5', type: 'paragraph', order: 4, content: '下記の通りお見積り申し上げます。', align: 'left', fontSize: 12 },
+    { id: 'new-q-6', type: 'table', order: 5, tableRows: 2, tableCols: 3, tableHeaders: ['項目', '数量', '金額'], tableCells: [['', '1', ''], ['合計', '', '']] },
+    { id: 'new-q-7', type: 'variable_line', order: 6, variableLabel: '有効期限', variableKey: 'validity', variableType: 'text', variableRequired: true },
+    { id: 'new-q-8', type: 'signature', order: 7, companyName: '', representativeTitle: '代表取締役', representativeName: '' },
+  ],
+}
+
+const PRESETS: TemplatePreset[] = [CERTIFICATE_PRESET, INVOICE_PRESET, QUOTATION_PRESET]
+
 // ============================================================
-// テンプレート新規作成ページ（Client Component）
-// フォーム入力、変数エディタ、ブロックエディタ、プレビューを提供
+// メインページ
 // ============================================================
+
 export default function NewTemplatePage() {
   const router = useRouter()
-  const supabase = createClient()
 
   // フォーム状態
   const [name, setName] = useState('')
-  const [category, setCategory] = useState('report')
   const [description, setDescription] = useState('')
-  const [variables, setVariables] = useState<TemplateVariable[]>([])
-  const [blocks, setBlocks] = useState<PreviewBlock[]>([])
-  const [layout, setLayout] = useState<TemplateLayout>(DEFAULT_LAYOUT)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [documentType, setDocumentType] = useState('employment_cert')
+  const [creating, setCreating] = useState(false)
+  const [selectedPreset, setSelectedPreset] = useState<TemplatePreset | null>(null)
 
-  // タブ切り替え（編集 / プレビュー）
-  const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit')
-
-  // ============================================================
-  // ブロック操作
-  // ============================================================
-
-  /** ブロックを追加 */
-  const handleAddBlock = useCallback(
-    (type: BlockType) => {
-      const newBlock: PreviewBlock = {
-        id: `block_${Date.now()}`,
-        type,
-        content: type === 'divider' ? '' : '',
-        order: blocks.length,
-      }
-      setBlocks((prev) => [...prev, newBlock])
-    },
-    [blocks.length]
-  )
-
-  /** ブロックを削除 */
-  const handleRemoveBlock = useCallback((index: number) => {
-    setBlocks((prev) => {
-      const updated = prev.filter((_, i) => i !== index)
-      return updated.map((b, i) => ({ ...b, order: i }))
-    })
-  }, [])
-
-  /** ブロック内容を更新 */
-  const handleUpdateBlock = useCallback(
-    (index: number, content: string) => {
-      setBlocks((prev) =>
-        prev.map((b, i) => (i === index ? { ...b, content } : b))
-      )
-    },
-    []
-  )
-
-  /** 変数をブロックに挿入するヒント */
-  const variableInsertHint =
-    variables.length > 0
-      ? `利用可能な変数: ${variables.map((v) => `{{${v.name}}}`).join(', ')}`
-      : '変数を追加すると {{変数名}} の形式で挿入できます'
-
-  // ============================================================
-  // 保存処理
-  // ============================================================
-  const handleSave = useCallback(async () => {
-    setError(null)
-
-    // バリデーション
-    if (!name.trim()) {
-      setError('テンプレート名を入力してください')
-      return
-    }
-
-    setSaving(true)
+  /** テンプレートを作成してエディタへ遷移 */
+  const handleCreate = useCallback(async () => {
+    if (!name.trim()) return
+    setCreating(true)
     try {
-      // 現在のユーザー情報を取得
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        setError('ログインが必要です')
-        return
+      const id = `tpl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const preset = selectedPreset ?? EMPTY_PRESET
+      // ブロックIDを一意にリネーム
+      const blocks: TemplateBlock[] = preset.blocks.map((b, i) => ({
+        ...b,
+        id: `blk-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 4)}`,
+      }))
+
+      // 変数を自動抽出
+      const variables: LocalTemplate['variables'] = []
+      const seen = new Set<string>()
+      for (const b of blocks) {
+        if (b.type === 'variable_line' && b.variableKey && !seen.has(b.variableKey)) {
+          seen.add(b.variableKey)
+          variables.push({
+            key: b.variableKey,
+            label: b.variableLabel ?? b.variableKey,
+            type: b.variableType ?? 'text',
+            required: b.variableRequired ?? false,
+            options: b.variableOptions,
+          })
+        }
       }
 
-      // ユーザーの組織IDを取得
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single()
-
-      if (!profile) {
-        setError('ユーザー情報の取得に失敗しました')
-        return
+      const template: LocalTemplate = {
+        id,
+        name: name.trim(),
+        document_type: documentType,
+        description: description.trim(),
+        is_published: false,
+        version: 1,
+        variables,
+        body_template: '',
+        blocks,
+        created_at: new Date().toISOString(),
       }
-
-      // テンプレート作成
-      const { data: template, error: templateError } = await supabase
-        .from('templates')
-        .insert({
-          name: name.trim(),
-          category,
-          description: description.trim() || null,
-          status: 'draft',
-          variables,
-          organization_id: profile.organization_id,
-          created_by: user.id,
-        })
-        .select('id')
-        .single()
-
-      if (templateError || !template) {
-        setError(`テンプレートの作成に失敗しました: ${templateError?.message}`)
-        return
-      }
-
-      // 初期バージョン（v1）を作成
-      const { error: versionError } = await supabase
-        .from('template_versions')
-        .insert({
-          template_id: template.id,
-          version_number: 1,
-          content: JSON.stringify(blocks),
-          layout,
-          change_note: '初期バージョン',
-          created_by: user.id,
-        })
-
-      if (versionError) {
-        setError(`バージョンの作成に失敗しました: ${versionError.message}`)
-        return
-      }
-
-      // 作成したテンプレートの詳細ページへ遷移
-      router.push(`/templates/${template.id}`)
-    } catch (err) {
-      setError('予期しないエラーが発生しました')
-      console.error(err)
+      saveTemplate(template)
+      router.push(`/templates/${id}/edit`)
     } finally {
-      setSaving(false)
+      setCreating(false)
     }
-  }, [name, category, description, variables, blocks, layout, supabase, router])
+  }, [name, description, documentType, selectedPreset, router])
+
+  /** プリセット選択 */
+  const selectPreset = (preset: TemplatePreset) => {
+    setSelectedPreset(preset)
+    if (!name) setName(preset.name)
+    if (!description) setDescription(preset.description)
+    setDocumentType(preset.document_type)
+  }
 
   return (
-    <div className="space-y-6">
-      {/* ページヘッダー */}
-      <div className="flex items-center gap-4">
-        <Button asChild variant="ghost" size="icon">
-          <Link href="/templates">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">テンプレート新規作成</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            新しい文書テンプレートを作成します
-          </p>
+    <div className="mx-auto max-w-3xl space-y-6 py-6">
+      {/* ヘッダー */}
+      <div className="flex items-center gap-3">
+        <Link href="/templates" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
+          <ChevronLeft className="h-4 w-4" />
+          テンプレート一覧
+        </Link>
+        <div className="h-5 w-px bg-slate-300" />
+        <h1 className="text-xl font-bold text-slate-900">新規テンプレート作成</h1>
+      </div>
+
+      {/* プリセット選択 */}
+      <div>
+        <Label className="mb-2 block text-sm font-medium text-slate-700">テンプレートから始める（任意）</Label>
+        <div className="grid grid-cols-3 gap-3">
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.document_type}
+              onClick={() => selectPreset(preset)}
+              className={`rounded-lg border p-4 text-left transition-all ${
+                selectedPreset?.document_type === preset.document_type
+                  ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100'
+                  : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              <div className="mb-2">{preset.icon}</div>
+              <div className="text-sm font-medium text-slate-900">{preset.name}</div>
+              <div className="mt-0.5 text-xs text-slate-500">{preset.description}</div>
+              <div className="mt-2 flex items-center gap-1 text-xs text-slate-400">
+                <Zap className="h-3 w-3" />
+                {preset.blocks.length}ブロック
+              </div>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* エラー表示 */}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* 基本情報 */}
+      {/* 基本情報入力 */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">基本情報</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* テンプレート名 */}
-          <div className="space-y-2">
-            <Label htmlFor="template-name">テンプレート名 *</Label>
+        <CardContent className="space-y-4 p-6">
+          <div>
+            <Label className="text-sm font-medium text-slate-700">テンプレート名 <span className="text-red-500">*</span></Label>
             <Input
-              id="template-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="例: 月次報告書テンプレート"
+              placeholder="例: 在職証明書、請求書"
+              className="mt-1"
             />
           </div>
-
-          {/* カテゴリ */}
-          <div className="space-y-2">
-            <Label>カテゴリ *</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div>
+            <Label className="text-sm font-medium text-slate-700">文書種別</Label>
+            <select
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              value={documentType}
+              onChange={(e) => setDocumentType(e.target.value)}
+            >
+              <option value="employment_cert">在職証明書</option>
+              <option value="invoice">請求書</option>
+              <option value="quotation">見積書</option>
+              <option value="resignation">退職証明書</option>
+              <option value="contract">契約書</option>
+              <option value="report">報告書</option>
+              <option value="notification">通知書</option>
+              <option value="certificate">証明書</option>
+              <option value="other">その他</option>
+            </select>
           </div>
-
-          {/* 説明 */}
-          <div className="space-y-2">
-            <Label htmlFor="template-desc">説明</Label>
-            <Textarea
-              id="template-desc"
+          <div>
+            <Label className="text-sm font-medium text-slate-700">説明</Label>
+            <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="テンプレートの用途や注意事項を記入してください"
-              rows={3}
+              placeholder="テンプレートの用途や注意点を記載"
+              rows={2}
+              className="mt-1 w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
           </div>
         </CardContent>
       </Card>
 
-      {/* 変数定義 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">変数定義</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VariableEditor variables={variables} onChange={setVariables} />
-        </CardContent>
-      </Card>
-
-      {/* 本文エディタ / プレビュー切り替え */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">本文</CardTitle>
-            <div className="flex rounded-lg border">
-              <button
-                type="button"
-                onClick={() => setActiveTab('edit')}
-                className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                  activeTab === 'edit'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-gray-600 hover:bg-gray-50'
-                } rounded-l-lg`}
-              >
-                編集
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('preview')}
-                className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                  activeTab === 'preview'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-gray-600 hover:bg-gray-50'
-                } rounded-r-lg`}
-              >
-                プレビュー
-              </button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {activeTab === 'edit' ? (
-            <div className="space-y-4">
-              {/* 変数挿入ヒント */}
-              <p className="text-xs text-gray-400">{variableInsertHint}</p>
-
-              {/* ブロック追加ボタン群 */}
-              <div className="flex flex-wrap gap-2">
-                {(Object.entries(BLOCK_TYPE_LABELS) as [BlockType, string][]).map(
-                  ([type, label]) => (
-                    <Button
-                      key={type}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddBlock(type)}
-                    >
-                      <Plus className="mr-1 h-3 w-3" />
-                      {label}
-                    </Button>
-                  )
-                )}
-              </div>
-
-              {/* ブロック一覧 */}
-              {blocks.length === 0 && (
-                <p className="text-center text-sm text-gray-400 py-8 border border-dashed rounded-lg">
-                  上のボタンからブロックを追加してください
-                </p>
-              )}
-
-              <div className="space-y-3">
-                {blocks.map((block, index) => (
-                  <div
-                    key={block.id}
-                    className="flex items-start gap-2 rounded-lg border bg-white p-3"
-                  >
-                    {/* ドラッグハンドル */}
-                    <div className="pt-2 text-gray-400">
-                      <GripVertical className="h-4 w-4" />
-                    </div>
-
-                    <div className="flex-1 space-y-1">
-                      {/* ブロック種別ラベル */}
-                      <span className="text-xs font-medium text-gray-500">
-                        {BLOCK_TYPE_LABELS[block.type]}
-                      </span>
-
-                      {/* ブロック内容入力 */}
-                      {block.type === 'divider' ? (
-                        <hr className="border-gray-300 my-2" />
-                      ) : (
-                        <Textarea
-                          value={block.content}
-                          onChange={(e) => handleUpdateBlock(index, e.target.value)}
-                          placeholder={
-                            block.type === 'heading'
-                              ? '見出しテキストを入力'
-                              : block.type === 'list'
-                              ? '1行ごとにリスト項目を入力'
-                              : block.type === 'table'
-                              ? 'セル1|セル2|セル3（行ごとに改行、|で区切り）'
-                              : block.type === 'variable'
-                              ? '{{variable_name}} の形式で変数を挿入'
-                              : '本文を入力。{{変数名}} で変数を挿入できます'
-                          }
-                          rows={block.type === 'heading' ? 1 : 3}
-                          className="text-sm"
-                        />
-                      )}
-                    </div>
-
-                    {/* 削除ボタン */}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveBlock(index)}
-                      className="text-gray-400 hover:text-red-500"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            /* プレビュータブ */
-            <TemplatePreview
-              templateName={name || '(無題)'}
-              blocks={blocks}
-              variables={variables}
-              layout={layout}
-            />
-          )}
-        </CardContent>
-      </Card>
-
-      {/* レイアウト設定 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">レイアウト設定</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* 用紙サイズ */}
-          <div className="flex gap-4">
-            <div className="space-y-2">
-              <Label>用紙サイズ</Label>
-              <Select
-                value={layout.paper_size}
-                onValueChange={(val) =>
-                  setLayout((prev) => ({
-                    ...prev,
-                    paper_size: val as TemplateLayout['paper_size'],
-                  }))
-                }
-              >
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="A4">A4</SelectItem>
-                  <SelectItem value="A3">A3</SelectItem>
-                  <SelectItem value="B4">B4</SelectItem>
-                  <SelectItem value="B5">B5</SelectItem>
-                  <SelectItem value="letter">Letter</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* 用紙方向 */}
-            <div className="space-y-2">
-              <Label>用紙方向</Label>
-              <Select
-                value={layout.orientation}
-                onValueChange={(val) =>
-                  setLayout((prev) => ({
-                    ...prev,
-                    orientation: val as 'portrait' | 'landscape',
-                  }))
-                }
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="portrait">縦（ポートレート）</SelectItem>
-                  <SelectItem value="landscape">横（ランドスケープ）</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* マージン設定 */}
-          <div className="space-y-2">
-            <Label>マージン (mm)</Label>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {(['top', 'bottom', 'left', 'right'] as const).map((side) => {
-                const labels = { top: '上', bottom: '下', left: '左', right: '右' }
-                return (
-                  <div key={side} className="space-y-1">
-                    <Label className="text-xs text-gray-500">{labels[side]}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={layout.margins[side]}
-                      onChange={(e) =>
-                        setLayout((prev) => ({
-                          ...prev,
-                          margins: { ...prev.margins, [side]: Number(e.target.value) },
-                        }))
-                      }
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* ヘッダー/フッター */}
-          <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={layout.header.enabled}
-                onChange={(e) =>
-                  setLayout((prev) => ({
-                    ...prev,
-                    header: { ...prev.header, enabled: e.target.checked },
-                  }))
-                }
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              ヘッダーを表示
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={layout.footer.enabled}
-                onChange={(e) =>
-                  setLayout((prev) => ({
-                    ...prev,
-                    footer: { ...prev.footer, enabled: e.target.checked },
-                  }))
-                }
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              フッターを表示
-            </label>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 保存ボタン */}
-      <div className="flex items-center justify-end gap-3 pb-8">
+      {/* アクション */}
+      <div className="flex items-center justify-between">
         <Button asChild variant="outline">
-          <Link href="/templates">キャンセル</Link>
+          <Link href="/templates">
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            キャンセル
+          </Link>
         </Button>
-        <Button onClick={handleSave} disabled={saving}>
-          <Save className="mr-2 h-4 w-4" />
-          {saving ? '保存中...' : 'テンプレートを作成'}
+        <Button onClick={handleCreate} disabled={creating || !name.trim()}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          {creating ? '作成中...' : 'テンプレートを作成してエディタを開く'}
         </Button>
       </div>
     </div>

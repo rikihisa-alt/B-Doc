@@ -305,6 +305,75 @@ export function addAuditLog(log: Omit<LocalAuditLog, 'id' | 'executed_at'>): voi
 }
 
 // ============================================================
+// テンプレートブロック型定義
+// ============================================================
+
+/** テンプレートブロックの種類 */
+export type TemplateBlockType =
+  | 'heading'        // 見出し
+  | 'paragraph'      // 本文テキスト
+  | 'variable_line'  // 変数行
+  | 'table'          // 表
+  | 'seal'           // 印影配置
+  | 'signature'      // 署名欄
+  | 'divider'        // 区切り線
+  | 'spacer'         // 余白
+  | 'page_break'     // 改ページ
+  | 'notice'         // 注意書き
+  | 'image'          // 画像プレースホルダー
+  | 'date_line'      // 日付行
+  | 'address_block'  // 宛名ブロック
+
+/** テンプレートブロックの定義 */
+export interface TemplateBlock {
+  id: string
+  type: TemplateBlockType
+  order: number
+  // 共通
+  content?: string
+  align?: 'left' | 'center' | 'right'
+  // 見出し
+  level?: 1 | 2 | 3 | 4
+  letterSpacing?: number
+  // 本文
+  fontSize?: number
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  lineHeight?: number
+  // 変数行
+  variableKey?: string
+  variableLabel?: string
+  variableType?: 'text' | 'number' | 'date' | 'select' | 'boolean'
+  variableRequired?: boolean
+  variableOptions?: { value: string; label: string }[]
+  // 表
+  tableRows?: number
+  tableCols?: number
+  tableCells?: string[][]
+  tableHeaders?: string[]
+  // 印影
+  sealId?: string
+  sealPosition?: 'left' | 'center' | 'right'
+  // 署名欄
+  companyName?: string
+  representativeTitle?: string
+  representativeName?: string
+  // 区切り線
+  dividerStyle?: 'solid' | 'dashed' | 'dotted'
+  dividerThickness?: number
+  // 余白
+  spacerHeight?: number
+  // 注意書き
+  noticeStyle?: 'info' | 'warning' | 'bordered'
+  // 宛名
+  addressCompany?: string
+  addressDepartment?: string
+  addressName?: string
+  addressSuffix?: '御中' | '様' | '殿'
+}
+
+// ============================================================
 // テンプレートストア
 // ============================================================
 
@@ -317,6 +386,7 @@ export interface LocalTemplate {
   version: number
   variables: { key: string; label: string; type: string; required: boolean; options?: { value: string; label: string }[] }[]
   body_template: string
+  blocks?: TemplateBlock[]
   created_at: string
 }
 
@@ -336,6 +406,22 @@ const INITIAL_TEMPLATES: LocalTemplate[] = [
       { key: 'purpose', label: '使用目的', type: 'select', required: true, options: [{ value: '金融機関提出', label: '金融機関提出' }, { value: '保育園申請', label: '保育園申請' }, { value: '住宅ローン申請', label: '住宅ローン申請' }, { value: 'その他', label: 'その他' }] },
     ],
     body_template: '在職証明書\n\n下記の者は、当社に在籍していることを証明いたします。\n\n氏名: {{employee_name}}\n所属部署: {{department}}\n雇用形態: {{employment_type}}\n\n発行日: {{issue_date}}\n使用目的: {{purpose}}\n\n以上',
+    blocks: [
+      { id: 'b-001', type: 'date_line', order: 0, content: '{{issue_date}}', align: 'right' },
+      { id: 'b-002', type: 'heading', order: 1, content: '在 職 証 明 書', level: 1, align: 'center', letterSpacing: 16 },
+      { id: 'b-003', type: 'spacer', order: 2, spacerHeight: 10 },
+      { id: 'b-004', type: 'paragraph', order: 3, content: '下記の者は、当社に在籍していることを証明いたします。', align: 'left', fontSize: 12 },
+      { id: 'b-005', type: 'spacer', order: 4, spacerHeight: 8 },
+      { id: 'b-006', type: 'variable_line', order: 5, variableLabel: '氏名', variableKey: 'employee_name', variableType: 'text', variableRequired: true },
+      { id: 'b-007', type: 'variable_line', order: 6, variableLabel: '所属部署', variableKey: 'department', variableType: 'select', variableRequired: true, variableOptions: [{ value: '営業部', label: '営業部' }, { value: '開発部', label: '開発部' }, { value: '総務部', label: '総務部' }, { value: '人事部', label: '人事部' }] },
+      { id: 'b-008', type: 'variable_line', order: 7, variableLabel: '雇用形態', variableKey: 'employment_type', variableType: 'select', variableRequired: true, variableOptions: [{ value: '正社員', label: '正社員' }, { value: '契約社員', label: '契約社員' }, { value: 'パート', label: 'パート' }] },
+      { id: 'b-009', type: 'variable_line', order: 8, variableLabel: '使用目的', variableKey: 'purpose', variableType: 'select', variableRequired: true, variableOptions: [{ value: '金融機関提出', label: '金融機関提出' }, { value: '保育園申請', label: '保育園申請' }, { value: '住宅ローン申請', label: '住宅ローン申請' }, { value: 'その他', label: 'その他' }] },
+      { id: 'b-010', type: 'spacer', order: 9, spacerHeight: 10 },
+      { id: 'b-011', type: 'paragraph', order: 10, content: '以上', align: 'right', fontSize: 12 },
+      { id: 'b-012', type: 'spacer', order: 11, spacerHeight: 15 },
+      { id: 'b-013', type: 'signature', order: 12, companyName: 'デモ株式会社', representativeTitle: '代表取締役', representativeName: '○○ ○○' },
+      { id: 'b-014', type: 'seal', order: 13, sealId: 'seal-001', sealPosition: 'right' },
+    ],
     created_at: '2026-01-10T00:00:00Z',
   },
   {
@@ -353,6 +439,23 @@ const INITIAL_TEMPLATES: LocalTemplate[] = [
       { key: 'description', label: '摘要', type: 'text', required: false },
     ],
     body_template: '請求書\n\n{{client_name}} 御中\n\n下記の通りご請求申し上げます。\n\n金額: ¥{{amount}}（税抜）\n摘要: {{description}}\n\n発行日: {{issue_date}}\n支払期限: {{due_date}}\n\n振込先: みずほ銀行 本店 普通 1234567',
+    blocks: [
+      { id: 'b-101', type: 'date_line', order: 0, content: '{{issue_date}}', align: 'right' },
+      { id: 'b-102', type: 'heading', order: 1, content: '請 求 書', level: 1, align: 'center', letterSpacing: 16 },
+      { id: 'b-103', type: 'spacer', order: 2, spacerHeight: 8 },
+      { id: 'b-104', type: 'address_block', order: 3, addressCompany: '{{client_name}}', addressSuffix: '御中' },
+      { id: 'b-105', type: 'spacer', order: 4, spacerHeight: 8 },
+      { id: 'b-106', type: 'paragraph', order: 5, content: '下記の通りご請求申し上げます。', align: 'left', fontSize: 12 },
+      { id: 'b-107', type: 'divider', order: 6, dividerStyle: 'solid', dividerThickness: 1 },
+      { id: 'b-108', type: 'table', order: 7, tableRows: 3, tableCols: 3, tableHeaders: ['摘要', '数量', '金額'], tableCells: [['{{description}}', '1', '¥{{amount}}'], ['', '', ''], ['小計', '', '¥{{amount}}']] },
+      { id: 'b-109', type: 'spacer', order: 8, spacerHeight: 5 },
+      { id: 'b-110', type: 'variable_line', order: 9, variableLabel: '支払期限', variableKey: 'due_date', variableType: 'date', variableRequired: true },
+      { id: 'b-111', type: 'spacer', order: 10, spacerHeight: 5 },
+      { id: 'b-112', type: 'notice', order: 11, content: '振込先: みずほ銀行 本店 普通 1234567\n振込手数料はお客様のご負担となります。', noticeStyle: 'bordered' },
+      { id: 'b-113', type: 'spacer', order: 12, spacerHeight: 10 },
+      { id: 'b-114', type: 'signature', order: 13, companyName: 'デモ株式会社', representativeTitle: '代表取締役', representativeName: '○○ ○○' },
+      { id: 'b-115', type: 'seal', order: 14, sealId: 'seal-002', sealPosition: 'right' },
+    ],
     created_at: '2026-02-01T00:00:00Z',
   },
   {
@@ -369,6 +472,20 @@ const INITIAL_TEMPLATES: LocalTemplate[] = [
       { key: 'description', label: '件名', type: 'text', required: true },
     ],
     body_template: '見積書\n\n{{client_name}} 御中\n\n件名: {{description}}\n\n見積金額: ¥{{amount}}（税抜）\n有効期限: {{validity}}\n\n備考: 上記金額には消費税は含まれておりません。',
+    blocks: [
+      { id: 'b-201', type: 'date_line', order: 0, content: '{{issue_date}}', align: 'right' },
+      { id: 'b-202', type: 'heading', order: 1, content: '見 積 書', level: 1, align: 'center', letterSpacing: 16 },
+      { id: 'b-203', type: 'spacer', order: 2, spacerHeight: 8 },
+      { id: 'b-204', type: 'address_block', order: 3, addressCompany: '{{client_name}}', addressSuffix: '御中' },
+      { id: 'b-205', type: 'spacer', order: 4, spacerHeight: 5 },
+      { id: 'b-206', type: 'variable_line', order: 5, variableLabel: '件名', variableKey: 'description', variableType: 'text', variableRequired: true },
+      { id: 'b-207', type: 'divider', order: 6, dividerStyle: 'solid', dividerThickness: 1 },
+      { id: 'b-208', type: 'table', order: 7, tableRows: 2, tableCols: 3, tableHeaders: ['項目', '数量', '金額'], tableCells: [['{{description}}', '1', '¥{{amount}}'], ['合計', '', '¥{{amount}}']] },
+      { id: 'b-209', type: 'variable_line', order: 8, variableLabel: '有効期限', variableKey: 'validity', variableType: 'text', variableRequired: true },
+      { id: 'b-210', type: 'notice', order: 9, content: '上記金額には消費税は含まれておりません。', noticeStyle: 'info' },
+      { id: 'b-211', type: 'signature', order: 10, companyName: 'デモ株式会社', representativeTitle: '代表取締役', representativeName: '○○ ○○' },
+      { id: 'b-212', type: 'seal', order: 11, sealId: 'seal-002', sealPosition: 'right' },
+    ],
     created_at: '2026-01-15T00:00:00Z',
   },
   {
@@ -386,6 +503,22 @@ const INITIAL_TEMPLATES: LocalTemplate[] = [
       { key: 'reason', label: '退職事由', type: 'select', required: true, options: [{ value: '自己都合', label: '自己都合' }, { value: '会社都合', label: '会社都合' }, { value: '契約期間満了', label: '契約期間満了' }] },
     ],
     body_template: '退職証明書\n\n下記の者が当社を退職したことを証明いたします。\n\n氏名: {{employee_name}}\n所属部署: {{department}}\n入社日: {{hire_date}}\n退職日: {{resign_date}}\n退職事由: {{reason}}\n\n以上',
+    blocks: [
+      { id: 'b-301', type: 'date_line', order: 0, content: '{{resign_date}}', align: 'right' },
+      { id: 'b-302', type: 'heading', order: 1, content: '退 職 証 明 書', level: 1, align: 'center', letterSpacing: 16 },
+      { id: 'b-303', type: 'spacer', order: 2, spacerHeight: 10 },
+      { id: 'b-304', type: 'paragraph', order: 3, content: '下記の者が当社を退職したことを証明いたします。', align: 'left', fontSize: 12 },
+      { id: 'b-305', type: 'spacer', order: 4, spacerHeight: 8 },
+      { id: 'b-306', type: 'variable_line', order: 5, variableLabel: '氏名', variableKey: 'employee_name', variableType: 'text', variableRequired: true },
+      { id: 'b-307', type: 'variable_line', order: 6, variableLabel: '所属部署', variableKey: 'department', variableType: 'text', variableRequired: true },
+      { id: 'b-308', type: 'variable_line', order: 7, variableLabel: '入社日', variableKey: 'hire_date', variableType: 'date', variableRequired: true },
+      { id: 'b-309', type: 'variable_line', order: 8, variableLabel: '退職日', variableKey: 'resign_date', variableType: 'date', variableRequired: true },
+      { id: 'b-310', type: 'variable_line', order: 9, variableLabel: '退職事由', variableKey: 'reason', variableType: 'select', variableRequired: true, variableOptions: [{ value: '自己都合', label: '自己都合' }, { value: '会社都合', label: '会社都合' }, { value: '契約期間満了', label: '契約期間満了' }] },
+      { id: 'b-311', type: 'paragraph', order: 10, content: '以上', align: 'right', fontSize: 12 },
+      { id: 'b-312', type: 'spacer', order: 11, spacerHeight: 15 },
+      { id: 'b-313', type: 'signature', order: 12, companyName: 'デモ株式会社', representativeTitle: '代表取締役', representativeName: '○○ ○○' },
+      { id: 'b-314', type: 'seal', order: 13, sealId: 'seal-001', sealPosition: 'right' },
+    ],
     created_at: '2026-02-15T00:00:00Z',
   },
 ]
@@ -401,4 +534,135 @@ export function getTemplates(): LocalTemplate[] {
 
 export function getTemplate(id: string): LocalTemplate | null {
   return getTemplates().find((t) => t.id === id) ?? null
+}
+
+/** テンプレートを保存（新規 or 更新） */
+export function saveTemplate(template: LocalTemplate): void {
+  const templates = getTemplates()
+  const idx = templates.findIndex((t) => t.id === template.id)
+  if (idx >= 0) {
+    templates[idx] = template
+  } else {
+    templates.unshift(template)
+  }
+  setStorage('templates', templates)
+}
+
+/** テンプレートを削除 */
+export function deleteTemplate(id: string): void {
+  const templates = getTemplates().filter((t) => t.id !== id)
+  setStorage('templates', templates)
+}
+
+// ============================================================
+// 印影ストア
+// ============================================================
+
+/** ローカル保存用の印影データ */
+export interface LocalSeal {
+  id: string
+  name: string             // 印影名（例: "代表者印"）
+  type: 'round' | 'square' | 'personal'  // 丸印・角印・認印
+  text_line1: string       // 上段テキスト
+  text_line2: string       // 下段テキスト（丸印のみ）
+  text_line3?: string      // 中段テキスト（角印の場合3行まで）
+  size: number             // サイズ(mm) 18-60
+  color: string            // 色 hex
+  border_width: number     // 枠線太さ(px) 1-4
+  font_family: string      // フォント
+  created_at: string
+}
+
+/** 初期デモ印影データ */
+const INITIAL_SEALS: LocalSeal[] = [
+  {
+    id: 'seal-001',
+    name: '代表者印',
+    type: 'round',
+    text_line1: 'B-Doc',
+    text_line2: '代表者印',
+    size: 42,
+    color: '#cc0000',
+    border_width: 2,
+    font_family: 'serif',
+    created_at: '2026-01-10T00:00:00Z',
+  },
+  {
+    id: 'seal-002',
+    name: '角印（社印）',
+    type: 'square',
+    text_line1: 'B-Doc',
+    text_line2: 'デモ株式会社',
+    text_line3: '',
+    size: 24,
+    color: '#cc0000',
+    border_width: 2,
+    font_family: 'serif',
+    created_at: '2026-01-10T00:00:00Z',
+  },
+  {
+    id: 'seal-003',
+    name: '認印（田中）',
+    type: 'personal',
+    text_line1: '田中',
+    text_line2: '',
+    size: 12,
+    color: '#cc0000',
+    border_width: 2,
+    font_family: 'serif',
+    created_at: '2026-01-10T00:00:00Z',
+  },
+]
+
+/** 全印影を取得 */
+export function getSeals(): LocalSeal[] {
+  const stored = getStorage<LocalSeal[]>('seals', [])
+  if (stored.length === 0) {
+    setStorage('seals', INITIAL_SEALS)
+    return INITIAL_SEALS
+  }
+  return stored
+}
+
+/** IDで印影を取得 */
+export function getSeal(id: string): LocalSeal | null {
+  return getSeals().find((s) => s.id === id) ?? null
+}
+
+/** 印影を保存（新規 or 更新） */
+export function saveSeal(seal: LocalSeal): void {
+  const seals = getSeals()
+  const idx = seals.findIndex((s) => s.id === seal.id)
+  if (idx >= 0) {
+    seals[idx] = seal
+  } else {
+    seals.unshift(seal)
+  }
+  setStorage('seals', seals)
+}
+
+/** 印影を削除 */
+export function deleteSeal(id: string): void {
+  const seals = getSeals().filter((s) => s.id !== id)
+  setStorage('seals', seals)
+}
+
+/** 印影を新規作成 */
+export function createSeal(partial: Partial<LocalSeal>): LocalSeal {
+  const seal: LocalSeal = {
+    id: `seal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: partial.name ?? '新規印影',
+    type: partial.type ?? 'round',
+    text_line1: partial.text_line1 ?? '',
+    text_line2: partial.text_line2 ?? '',
+    text_line3: partial.text_line3,
+    size: partial.size ?? 42,
+    color: partial.color ?? '#cc0000',
+    border_width: partial.border_width ?? 2,
+    font_family: partial.font_family ?? 'serif',
+    created_at: new Date().toISOString(),
+    ...partial,
+  }
+  saveSeal(seal)
+  return seal
 }

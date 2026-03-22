@@ -24,6 +24,8 @@ import {
   addApprovalRecord,
   addAuditLog,
   assignDocumentNumber,
+  getTemplate,
+  getSeals,
 } from '@/lib/store'
 import type { LocalDocument, LocalApprovalRecord, LocalAuditLog } from '@/lib/store'
 import {
@@ -183,10 +185,9 @@ export default function DocumentDetailPage() {
   const handleDownloadPdf = async () => {
     if (!doc) return
     try {
-      let body = doc.body_template
-      for (const [key, value] of Object.entries(doc.values)) {
-        body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value)
-      }
+      // テンプレートのブロック・印影データを取得
+      const template = doc.template_id ? getTemplate(doc.template_id) : null
+      const allSeals = getSeals()
 
       const res = await fetch('/api/pdf', {
         method: 'POST',
@@ -197,7 +198,10 @@ export default function DocumentDetailPage() {
           document_type: doc.document_type,
           values: doc.values,
           body_template: doc.body_template,
+          blocks: template?.blocks || undefined,
+          seals: allSeals,
           issued_at: doc.issued_at || new Date().toISOString(),
+          is_draft: doc.status === 'draft',
         }),
       })
 

@@ -6,26 +6,25 @@ import { DocumentPdf } from '@/lib/pdf/document-pdf'
 /**
  * PDF生成API
  * POST /api/pdf
- * Body: { title, document_number, document_type, values, body_template, issued_at }
+ * Body: { title, document_number, document_type, values, body_template, blocks, seals, issued_at }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { title, document_number, document_type, values, body_template, issued_at } = body
+    const {
+      title,
+      document_number,
+      document_type,
+      values,
+      body_template,
+      blocks,
+      seals,
+      issued_at,
+      is_draft,
+    } = body
 
     if (!title) {
       return NextResponse.json({ error: 'タイトルは必須です' }, { status: 400 })
-    }
-
-    // テンプレートの変数を置換した本文を生成
-    let renderedBody = body_template || ''
-    if (values && typeof values === 'object') {
-      for (const [key, value] of Object.entries(values)) {
-        renderedBody = renderedBody.replace(
-          new RegExp(`\\{\\{${key}\\}\\}`, 'g'),
-          String(value || '')
-        )
-      }
     }
 
     // React PDFでPDFを生成
@@ -33,9 +32,15 @@ export async function POST(request: NextRequest) {
       title: title || '文書',
       documentNumber: document_number || '未採番',
       documentType: document_type || '',
-      body: renderedBody,
       issuedAt: issued_at || new Date().toISOString(),
       companyName: 'B-Doc デモ株式会社',
+      isDraft: is_draft || false,
+      // リッチブロック
+      blocks: blocks || undefined,
+      values: values || {},
+      seals: seals || [],
+      // レガシー互換
+      body: body_template || '',
     })
 
     const pdfStream = await ReactPDF.renderToStream(element)
