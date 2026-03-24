@@ -5,7 +5,7 @@
 // テンプレート選択 → フォーム入力 → PDF生成・ダウンロード
 // =============================================================================
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -32,9 +32,17 @@ import type { LocalTemplate, TemplateBlock, LocalSeal, LocalSettings } from '@/l
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft,
+  ChevronDown,
   FileDown,
+  FileText,
+  Globe,
+  ClipboardCopy,
   Loader2,
+  Printer,
+  Check,
 } from 'lucide-react'
+import { exportToDocx } from '@/lib/export/docx'
+import { exportToHtml } from '@/lib/export/html'
 
 // =============================================================================
 // 会社情報変数マッピング
@@ -306,8 +314,14 @@ export default function NewDocumentPage() {
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   // フィールドエラー
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  // PDF生成中フラグ
+  // エクスポート中フラグ
   const [isGenerating, setIsGenerating] = useState(false)
+  // エクスポートドロップダウンの開閉
+  const [isExportOpen, setIsExportOpen] = useState(false)
+  // クリップボードコピー完了フラグ
+  const [clipboardCopied, setClipboardCopied] = useState(false)
+  // エクスポートドロップダウンの参照
+  const exportDropdownRef = useRef<HTMLDivElement>(null)
   // 読み込み中
   const [loading, setLoading] = useState(true)
   // 会社設定（自動入力用）
@@ -396,23 +410,31 @@ export default function NewDocumentPage() {
     return Object.keys(errors).length === 0
   }, [template, formValues])
 
-  // PDF 生成＆ダウンロード
-  const handleGeneratePdf = useCallback(async () => {
-    if (!template) return
+  // ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node)) {
+        setIsExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
-    // PDF出力情報のバリデーション
+  // エクスポート共通: バリデーション＆文書保存＆監査ログ
+  const prepareExport = useCallback(async (exportType: string): Promise<boolean> => {
+    if (!template) return false
+
     if (!docTitle.trim()) {
       alert('書類名を入力してください。')
-      return
+      return false
     }
     if (!creatorName.trim()) {
       alert('作成者名を入力してください。')
-      return
+      return false
     }
+    if (!validateAll()) return false
 
-    if (!validateAll()) return
-
-    setIsGenerating(true)
     try {
       const currentUser = getCurrentUser()
       const finalTitle = docTitle.trim() || template.name
@@ -449,7 +471,7 @@ export default function NewDocumentPage() {
         issued_by: creatorName.trim(),
       })
 
-      // PDF生成の監査ログ
+      // エクスポートの監査ログ
       addAuditLog({
         user_name: currentUser.name,
         user_role: currentUser.role,
@@ -458,12 +480,29 @@ export default function NewDocumentPage() {
         target_label: finalTitle,
         operation: 'document_pdf_generate',
         before_value: { status: 'draft' },
-        after_value: { status: 'issued' },
+        after_value: { status: 'issued', exportType },
         success: true,
-        comment: `PDF生成・ダウンロード（作成者: ${creatorName.trim()}, 作成日: ${creationDate}）`,
+        comment: `${exportType}エクスポート（作成者: ${creatorName.trim()}, 作成日: ${creationDate}）`,
       })
 
-      // プレビュー領域の内容をコピーして印刷用ウィンドウを開く
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'エクスポートの準備に失敗しました'
+      alert(message)
+      return false
+    }
+  }, [template, formValues, validateAll, docTitle, creatorName, creationDate])
+
+  // PDF 出力（印刷ダイアログ）
+  const handleExportPdf = useCallback(async () => {
+    if (!template) return
+    setIsGenerating(true)
+    setIsExportOpen(false)
+    try {
+      const ok = await prepareExport('PDF')
+      if (!ok) return
+
+      const finalTitle = docTitle.trim() || template.name
       const previewEl = document.getElementById('a4-preview-content')
       if (!previewEl) return
 
@@ -479,9 +518,48 @@ export default function NewDocumentPage() {
 <meta charset="utf-8" />
 <title>${finalTitle}</title>
 <style>
-  @page { size: A4; margin: 20mm; }
+  @page {
+    size: A4;
+    margin: 20mm;
+    @top-left { content: "${finalTitle}"; font-size: 9px; color: #888; }
+    @top-right { content: "作成者: ${creatorName.trim()}"; font-size: 9px; color: #888; }
+    @bottom-center { content: counter(page) " / " counter(pages); font-size: 9px; color: #888; }
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif; font-size: 12px; color: #1a1a1a; line-height: 1.6; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+    font-size: 12px;
+    color: #1a1a1a;
+    line-height: 1.6;
+  }
+  /* ヘッダー・フッター（ブラウザ互換用） */
+  .print-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 0 0 8px 0;
+    border-bottom: 1px solid #ddd;
+    font-size: 9px;
+    color: #888;
+    display: flex;
+    justify-content: space-between;
+  }
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 8px 0 0 0;
+    border-top: 1px solid #ddd;
+    font-size: 9px;
+    color: #888;
+    text-align: center;
+  }
+  .print-content {
+    margin-top: 24px;
+    margin-bottom: 24px;
+  }
   table { border-collapse: collapse; width: 100%; }
   th, td { border: 1px solid #666; padding: 4px 8px; text-align: left; }
   th { background: #f0f0f0; font-weight: 600; }
@@ -491,43 +569,209 @@ export default function NewDocumentPage() {
   .text-left { text-align: left; }
   .font-bold { font-weight: bold; }
   .font-medium { font-weight: 500; }
+  .font-semibold { font-weight: 600; }
   .my-1 { margin: 4px 0; }
   .my-2 { margin: 8px 0; }
   .my-3 { margin: 12px 0; }
   .my-4 { margin: 16px 0; }
-  .notice { border: 1px solid #999; background: #fafafa; padding: 8px 12px; border-radius: 4px; white-space: pre-wrap; font-size: 11px; margin: 8px 0; }
-  .var-line { display: flex; gap: 16px; margin: 4px 0; font-size: 13px; }
-  .var-label { width: 120px; flex-shrink: 0; font-weight: 500; }
-  .seal-container { display: flex; margin: 8px 0; }
-  .seal-left { justify-content: flex-start; }
-  .seal-center { justify-content: center; }
-  .seal-right { justify-content: flex-end; }
-  .signature { text-align: right; margin: 16px 0; font-size: 13px; line-height: 1.8; }
+  .whitespace-pre-wrap { white-space: pre-wrap; }
   h1 { font-size: 20px; margin: 8px 0; }
   h2 { font-size: 17px; margin: 8px 0; }
   h3 { font-size: 15px; margin: 8px 0; }
-  .address { margin: 8px 0; font-size: 13px; }
-  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 </head>
 <body>
+<div class="print-header">
+  <span>${finalTitle}</span>
+  <span>作成者: ${creatorName.trim()}</span>
+</div>
+<div class="print-footer">
+  作成日: ${creationDate}
+</div>
+<div class="print-content">
 ${previewEl.innerHTML}
+</div>
 </body>
 </html>`)
       printWindow.document.close()
 
-      // 印刷ダイアログを表示
       setTimeout(() => {
         printWindow.print()
       }, 500)
-
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'PDF生成に失敗しました'
+      const message = err instanceof Error ? err.message : 'PDF出力に失敗しました'
       alert(message)
     } finally {
       setIsGenerating(false)
     }
-  }, [template, formValues, validateAll, docTitle, creatorName, creationDate])
+  }, [template, formValues, prepareExport, docTitle, creatorName, creationDate])
+
+  // Word(.docx) エクスポート
+  const handleExportDocx = useCallback(async () => {
+    if (!template || !template.blocks) return
+    setIsGenerating(true)
+    setIsExportOpen(false)
+    try {
+      const ok = await prepareExport('Word')
+      if (!ok) return
+
+      await exportToDocx({
+        blocks: template.blocks,
+        formValues,
+        docTitle: docTitle.trim() || template.name,
+        creatorName: creatorName.trim(),
+        creationDate,
+        companySettings: companySettings ?? undefined,
+        replaceVars,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Word出力に失敗しました'
+      alert(message)
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [template, formValues, prepareExport, docTitle, creatorName, creationDate, companySettings])
+
+  // HTML エクスポート
+  const handleExportHtml = useCallback(async () => {
+    if (!template) return
+    setIsGenerating(true)
+    setIsExportOpen(false)
+    try {
+      const ok = await prepareExport('HTML')
+      if (!ok) return
+
+      exportToHtml({
+        docTitle: docTitle.trim() || template.name,
+        creatorName: creatorName.trim(),
+        creationDate,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'HTML出力に失敗しました'
+      alert(message)
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [template, prepareExport, docTitle, creatorName, creationDate])
+
+  // クリップボードにコピー
+  const handleCopyToClipboard = useCallback(async () => {
+    if (!template) return
+    setIsExportOpen(false)
+    try {
+      // ブロックからプレーンテキストを生成
+      const blocks = sortedBlocks
+      const lines: string[] = []
+
+      // タイトルと作成情報
+      lines.push(docTitle.trim() || template.name)
+      lines.push(`作成者: ${creatorName.trim()}`)
+      lines.push(`作成日: ${creationDate}`)
+      lines.push('')
+
+      for (const block of blocks) {
+        const content = block.content
+          ? replaceVars(block.content, formValues, companySettings ?? undefined)
+          : ''
+
+        switch (block.type) {
+          case 'heading':
+            lines.push(content)
+            lines.push('')
+            break
+          case 'paragraph':
+            lines.push(content)
+            lines.push('')
+            break
+          case 'variable_line': {
+            const val = block.variableKey ? formValues[block.variableKey] ?? '' : ''
+            lines.push(`${block.variableLabel ?? ''}: ${val || '（未入力）'}`)
+            break
+          }
+          case 'table': {
+            if (block.tableHeaders) {
+              lines.push(block.tableHeaders.map((h) => replaceVars(h, formValues, companySettings ?? undefined)).join('\t'))
+            }
+            if (block.tableCells) {
+              for (const row of block.tableCells) {
+                lines.push(row.map((c) => replaceVars(c, formValues, companySettings ?? undefined)).join('\t'))
+              }
+            }
+            lines.push('')
+            break
+          }
+          case 'divider':
+            lines.push('────────────────')
+            break
+          case 'spacer':
+            lines.push('')
+            break
+          case 'page_break':
+            lines.push('--- 改ページ ---')
+            lines.push('')
+            break
+          case 'notice':
+            lines.push(`[${block.noticeStyle === 'warning' ? '注意' : '情報'}] ${content}`)
+            lines.push('')
+            break
+          case 'date_line':
+            lines.push(content)
+            break
+          case 'address_block': {
+            const company = block.addressCompany ? replaceVars(block.addressCompany, formValues, companySettings ?? undefined) : ''
+            const dept = block.addressDepartment ? replaceVars(block.addressDepartment, formValues, companySettings ?? undefined) : ''
+            const name = block.addressName ? replaceVars(block.addressName, formValues, companySettings ?? undefined) : ''
+            const suffix = block.addressSuffix ?? ''
+            if (company) lines.push(`${company} ${suffix}`)
+            if (dept) lines.push(dept)
+            if (name) lines.push(`${name}${suffix && !company ? ` ${suffix}` : ''}`)
+            lines.push('')
+            break
+          }
+          case 'signature': {
+            if (block.companyName) lines.push(block.companyName)
+            if (block.representativeTitle) lines.push(block.representativeTitle)
+            if (block.representativeName) lines.push(block.representativeName)
+            lines.push('')
+            break
+          }
+          case 'seal':
+            lines.push('（印）')
+            break
+          default:
+            break
+        }
+      }
+
+      const textContent = lines.join('\n')
+      await navigator.clipboard.writeText(textContent)
+
+      // 監査ログ
+      const currentUser = getCurrentUser()
+      addAuditLog({
+        user_name: currentUser.name,
+        user_role: currentUser.role,
+        target_type: 'document',
+        target_id: template.id,
+        target_label: docTitle.trim() || template.name,
+        operation: 'document_pdf_generate',
+        before_value: null,
+        after_value: { exportType: 'clipboard' },
+        success: true,
+        comment: 'クリップボードにコピー',
+      })
+
+      // コピー完了フィードバック
+      setClipboardCopied(true)
+      setTimeout(() => setClipboardCopied(false), 2000)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'クリップボードへのコピーに失敗しました'
+      alert(message)
+    }
+  }, [template, sortedBlocks, formValues, docTitle, creatorName, creationDate, companySettings])
 
   // ローディング表示
   if (loading) {
@@ -581,7 +825,7 @@ ${previewEl.innerHTML}
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100">
                   <FileDown className="h-4 w-4 text-blue-600" />
                 </div>
-                PDF出力情報
+                エクスポート情報
               </h2>
 
               {/* 書類名 */}
@@ -786,15 +1030,97 @@ ${previewEl.innerHTML}
           </Button>
         </Link>
 
-        <Button onClick={handleGeneratePdf} disabled={isGenerating}>
-          {isGenerating ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <FileDown className="mr-2 h-4 w-4" />
+        {/* エクスポートドロップダウン */}
+        <div className="relative" ref={exportDropdownRef}>
+          <Button
+            onClick={() => setIsExportOpen((prev) => !prev)}
+            disabled={isGenerating}
+            className="gap-1.5"
+          >
+            {isGenerating ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="mr-1 h-4 w-4" />
+            )}
+            エクスポート
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', isExportOpen && 'rotate-180')} />
+          </Button>
+
+          {/* ドロップダウンメニュー */}
+          {isExportOpen && (
+            <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border bg-white py-1.5 shadow-lg">
+              {/* PDF出力 */}
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <Printer className="h-4 w-4 text-blue-500 shrink-0" />
+                <div>
+                  <div className="font-medium">PDF出力</div>
+                  <div className="text-xs text-gray-400">印刷ダイアログを開く</div>
+                </div>
+              </button>
+
+              {/* Word出力 */}
+              <button
+                type="button"
+                onClick={handleExportDocx}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <FileText className="h-4 w-4 text-indigo-500 shrink-0" />
+                <div>
+                  <div className="font-medium">Word (.docx)</div>
+                  <div className="text-xs text-gray-400">ダウンロード</div>
+                </div>
+              </button>
+
+              {/* HTML出力 */}
+              <button
+                type="button"
+                onClick={handleExportHtml}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <Globe className="h-4 w-4 text-green-500 shrink-0" />
+                <div>
+                  <div className="font-medium">HTML</div>
+                  <div className="text-xs text-gray-400">ダウンロード</div>
+                </div>
+              </button>
+
+              {/* 区切り線 */}
+              <div className="my-1 border-t border-gray-100" />
+
+              {/* クリップボードにコピー */}
+              <button
+                type="button"
+                onClick={handleCopyToClipboard}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                {clipboardCopied ? (
+                  <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : (
+                  <ClipboardCopy className="h-4 w-4 text-amber-500 shrink-0" />
+                )}
+                <div>
+                  <div className="font-medium">
+                    {clipboardCopied ? 'コピーしました' : 'クリップボードにコピー'}
+                  </div>
+                  <div className="text-xs text-gray-400">テキスト形式でコピー</div>
+                </div>
+              </button>
+            </div>
           )}
-          PDF生成
-        </Button>
+        </div>
       </div>
+
+      {/* クリップボードコピー完了トースト */}
+      {clipboardCopied && (
+        <div className="fixed bottom-20 right-6 z-50 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm text-white shadow-lg animate-in slide-in-from-bottom-2">
+          <Check className="h-4 w-4" />
+          クリップボードにコピーしました
+        </div>
+      )}
     </div>
   )
 }

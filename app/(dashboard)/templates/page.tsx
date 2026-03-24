@@ -23,6 +23,8 @@ import {
   XCircle,
   Clock,
   AlertTriangle,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
 import Link from 'next/link'
 import { DOCUMENT_TYPE_LABELS } from '@/types'
@@ -36,6 +38,12 @@ import {
   USER_ROLE_TYPE_LABELS,
 } from '@/lib/store'
 import type { LocalTemplate, TemplateApprovalStatus, CurrentUser } from '@/lib/store'
+
+/** 表示モードの型 */
+type ViewMode = 'card' | 'list'
+
+/** localStorage キー */
+const VIEW_MODE_STORAGE_KEY = 'bdoc_template_view_mode'
 
 // =============================================================================
 // テンプレート一覧ページ（Client Component - ストアベース版）
@@ -153,15 +161,28 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<LocalTemplate[]>([])
   const [loaded, setLoaded] = useState(false)
   const [currentUser, setCurrentUserLocal] = useState<CurrentUser | null>(null)
+  // 表示モード（カード/リスト）
+  const [viewMode, setViewMode] = useState<ViewMode>('card')
   // 差戻し理由入力ダイアログ
   const [rejectingTemplateId, setRejectingTemplateId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
-  // データ読み込み
+  // データ読み込み・表示モード復元
   useEffect(() => {
     setTemplates(getTemplates())
     setCurrentUserLocal(getCurrentUser())
+    // localStorageから表示モードを復元
+    const savedMode = localStorage.getItem(VIEW_MODE_STORAGE_KEY)
+    if (savedMode === 'card' || savedMode === 'list') {
+      setViewMode(savedMode)
+    }
     setLoaded(true)
+  }, [])
+
+  /** 表示モード切替 */
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode)
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
   }, [])
 
   const userRole = currentUser?.role ?? 'staff'
@@ -305,12 +326,41 @@ export default function TemplatesPage() {
             </span>
           </p>
         </div>
-        <Button asChild className="gap-2 shadow-sm">
-          <Link href="/templates/new">
-            <Plus className="h-4 w-4" />
-            新規テンプレート
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* 表示モード切替ボタン */}
+          <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
+            <button
+              onClick={() => handleViewModeChange('card')}
+              className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'card'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title="カード表示"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">カード</span>
+            </button>
+            <button
+              onClick={() => handleViewModeChange('list')}
+              className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title="リスト表示"
+            >
+              <List className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">リスト</span>
+            </button>
+          </div>
+          <Button asChild className="gap-2 shadow-sm">
+            <Link href="/templates/new">
+              <Plus className="h-4 w-4" />
+              新規テンプレート
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* サマリーカード */}
@@ -393,138 +443,265 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* テンプレートカードグリッド */}
+      {/* テンプレート一覧 */}
       {templates.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {templates.map((template) => {
-            const status = getStatus(template)
-            return (
-              <Card key={template.id} className={`group overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-l-4 ${TEMPLATE_CARD_BORDER[status]}`}>
-                {/* ミニプレビュー */}
-                <div className="relative h-32 border-b border-slate-100 bg-slate-50">
-                  <TemplateMiniPreview template={template} />
-                  {/* ホバー時のオーバーレイ */}
-                  <div className="absolute inset-0 flex items-center justify-center gap-2 bg-white/80 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button asChild size="sm" variant="outline" className="h-8">
-                      <Link href={`/templates/${template.id}/edit`}>
-                        <Pencil className="mr-1 h-3.5 w-3.5" />
-                        編集
-                      </Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline" className="h-8">
-                      <Link href={`/templates/${template.id}`}>
-                        <Eye className="mr-1 h-3.5 w-3.5" />
-                        詳細
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/templates/${template.id}/edit`}
-                        className="block truncate text-sm font-semibold text-slate-900 hover:text-blue-600"
-                      >
-                        {template.name}
-                      </Link>
-                      {template.description && (
-                        <p className="mt-0.5 truncate text-xs text-slate-400">{template.description}</p>
-                      )}
-                    </div>
-                    <TemplateApprovalBadge status={status} />
-                  </div>
-
-                  {/* 差戻し理由の表示 */}
-                  {status === 'rejected' && template.rejection_reason && (
-                    <div className="mt-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-600">
-                      <span className="font-medium">差戻し理由:</span> {template.rejection_reason}
-                    </div>
-                  )}
-
-                  {/* メタ情報 */}
-                  <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {DOCUMENT_TYPE_LABELS[template.document_type] ?? template.document_type}
-                    </Badge>
-                    <span className="inline-flex items-center gap-0.5">
-                      <Blocks className="h-3 w-3" />
-                      {getBlockCount(template)}
-                    </span>
-                    <span className="inline-flex items-center gap-0.5">
-                      <Variable className="h-3 w-3" />
-                      {getVariableCount(template)}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium">
-                      v{template.version}
-                    </span>
-                  </div>
-
-                  {/* 承認ワークフローボタン + 操作ボタン */}
-                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
-                    <div className="flex items-center gap-1">
-                      {/* 一般社員: 下書き・差戻しテンプレートに承認申請ボタン */}
-                      {!isApprover && (status === 'draft' || status === 'rejected') && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-xs text-amber-600 border-amber-200 hover:bg-amber-50"
-                          onClick={() => handleSubmitForApproval(template)}
-                        >
-                          <Send className="mr-1 h-3 w-3" />
-                          承認申請
-                        </Button>
-                      )}
-
-                      {/* 管理職/管理者: 承認待ちテンプレートに承認・差戻しボタン */}
-                      {isApprover && status === 'pending_approval' && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs text-green-600 border-green-200 hover:bg-green-50"
-                            onClick={() => handleApprove(template)}
-                          >
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            承認
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => handleOpenReject(template.id)}
-                          >
-                            <XCircle className="mr-1 h-3 w-3" />
-                            差戻し
-                          </Button>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-slate-400">
-                        {new Date(template.created_at).toLocaleDateString('ja-JP')}
-                      </span>
-                      <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+        viewMode === 'card' ? (
+          /* カード表示 */
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {templates.map((template) => {
+              const status = getStatus(template)
+              return (
+                <Card key={template.id} className={`group overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-l-4 ${TEMPLATE_CARD_BORDER[status]}`}>
+                  {/* ミニプレビュー */}
+                  <div className="relative h-32 border-b border-slate-100 bg-slate-50">
+                    <TemplateMiniPreview template={template} />
+                    {/* ホバー時のオーバーレイ */}
+                    <div className="absolute inset-0 flex items-center justify-center gap-2 bg-white/80 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button asChild size="sm" variant="outline" className="h-8">
                         <Link href={`/templates/${template.id}/edit`}>
-                          <Pencil className="mr-1 h-3 w-3" />
+                          <Pencil className="mr-1 h-3.5 w-3.5" />
                           編集
                         </Link>
                       </Button>
-                      <button
-                        onClick={() => handleDelete(template.id, template.name)}
-                        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                        title="削除"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <Button asChild size="sm" variant="outline" className="h-8">
+                        <Link href={`/templates/${template.id}`}>
+                          <Eye className="mr-1 h-3.5 w-3.5" />
+                          詳細
+                        </Link>
+                      </Button>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <Link
+                          href={`/templates/${template.id}/edit`}
+                          className="block truncate text-sm font-semibold text-slate-900 hover:text-blue-600"
+                        >
+                          {template.name}
+                        </Link>
+                        {template.description && (
+                          <p className="mt-0.5 truncate text-xs text-slate-400">{template.description}</p>
+                        )}
+                      </div>
+                      <TemplateApprovalBadge status={status} />
+                    </div>
+
+                    {/* 差戻し理由の表示 */}
+                    {status === 'rejected' && template.rejection_reason && (
+                      <div className="mt-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-600">
+                        <span className="font-medium">差戻し理由:</span> {template.rejection_reason}
+                      </div>
+                    )}
+
+                    {/* メタ情報 */}
+                    <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {DOCUMENT_TYPE_LABELS[template.document_type] ?? template.document_type}
+                      </Badge>
+                      <span className="inline-flex items-center gap-0.5">
+                        <Blocks className="h-3 w-3" />
+                        {getBlockCount(template)}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5">
+                        <Variable className="h-3 w-3" />
+                        {getVariableCount(template)}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium">
+                        v{template.version}
+                      </span>
+                    </div>
+
+                    {/* 承認ワークフローボタン + 操作ボタン */}
+                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <div className="flex items-center gap-1">
+                        {/* 一般社員: 下書き・差戻しテンプレートに承認申請ボタン */}
+                        {!isApprover && (status === 'draft' || status === 'rejected') && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs text-amber-600 border-amber-200 hover:bg-amber-50"
+                            onClick={() => handleSubmitForApproval(template)}
+                          >
+                            <Send className="mr-1 h-3 w-3" />
+                            承認申請
+                          </Button>
+                        )}
+
+                        {/* 管理職/管理者: 承認待ちテンプレートに承認・差戻しボタン */}
+                        {isApprover && status === 'pending_approval' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs text-green-600 border-green-200 hover:bg-green-50"
+                              onClick={() => handleApprove(template)}
+                            >
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                              承認
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                              onClick={() => handleOpenReject(template.id)}
+                            >
+                              <XCircle className="mr-1 h-3 w-3" />
+                              差戻し
+                            </Button>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-slate-400">
+                          {new Date(template.created_at).toLocaleDateString('ja-JP')}
+                        </span>
+                        <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                          <Link href={`/templates/${template.id}/edit`}>
+                            <Pencil className="mr-1 h-3 w-3" />
+                            編集
+                          </Link>
+                        </Button>
+                        <button
+                          onClick={() => handleDelete(template.id, template.name)}
+                          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                          title="削除"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        ) : (
+          /* リスト表示 */
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/60">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">テンプレート名</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">種別</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">ステータス</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">ブロック数</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">変数数</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">バージョン</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">作成日</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {templates.map((template) => {
+                    const status = getStatus(template)
+                    return (
+                      <tr key={template.id} className="transition-colors duration-150 hover:bg-blue-50/40">
+                        {/* テンプレート名 */}
+                        <td className="px-5 py-3">
+                          <Link
+                            href={`/templates/${template.id}/edit`}
+                            className="text-sm font-medium text-slate-900 hover:text-blue-600"
+                          >
+                            {template.name}
+                          </Link>
+                          {template.description && (
+                            <p className="mt-0.5 max-w-xs truncate text-xs text-slate-400">{template.description}</p>
+                          )}
+                        </td>
+                        {/* 種別 */}
+                        <td className="px-4 py-3">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {DOCUMENT_TYPE_LABELS[template.document_type] ?? template.document_type}
+                          </Badge>
+                        </td>
+                        {/* ステータス */}
+                        <td className="px-4 py-3">
+                          <TemplateApprovalBadge status={status} />
+                        </td>
+                        {/* ブロック数 */}
+                        <td className="px-4 py-3 text-center text-xs text-slate-600 tabular-nums">
+                          {getBlockCount(template)}
+                        </td>
+                        {/* 変数数 */}
+                        <td className="px-4 py-3 text-center text-xs text-slate-600 tabular-nums">
+                          {getVariableCount(template)}
+                        </td>
+                        {/* バージョン */}
+                        <td className="px-4 py-3 text-center">
+                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                            v{template.version}
+                          </span>
+                        </td>
+                        {/* 作成日 */}
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {new Date(template.created_at).toLocaleDateString('ja-JP')}
+                        </td>
+                        {/* 操作ボタン */}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* 承認申請ボタン（一般社員） */}
+                            {!isApprover && (status === 'draft' || status === 'rejected') && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs text-amber-600 border-amber-200 hover:bg-amber-50"
+                                onClick={() => handleSubmitForApproval(template)}
+                              >
+                                <Send className="mr-1 h-3 w-3" />
+                                承認申請
+                              </Button>
+                            )}
+                            {/* 承認・差戻しボタン（管理職/管理者） */}
+                            {isApprover && status === 'pending_approval' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs text-green-600 border-green-200 hover:bg-green-50"
+                                  onClick={() => handleApprove(template)}
+                                >
+                                  <CheckCircle className="mr-1 h-3 w-3" />
+                                  承認
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                                  onClick={() => handleOpenReject(template.id)}
+                                >
+                                  <XCircle className="mr-1 h-3 w-3" />
+                                  差戻し
+                                </Button>
+                              </>
+                            )}
+                            {/* 編集ボタン */}
+                            <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                              <Link href={`/templates/${template.id}/edit`}>
+                                <Pencil className="mr-1 h-3 w-3" />
+                                編集
+                              </Link>
+                            </Button>
+                            {/* 削除ボタン */}
+                            <button
+                              onClick={() => handleDelete(template.id, template.name)}
+                              className="rounded p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                              title="削除"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
       ) : (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center gap-4 py-20">
