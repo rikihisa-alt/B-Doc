@@ -6,44 +6,70 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   GitBranch,
   ChevronLeft,
   Plus,
   Trash2,
-  GripVertical,
   ArrowUp,
   ArrowDown,
-  Loader2,
   Save,
+  Check,
   Pencil,
   ChevronRight,
   ChevronDown,
+  Power,
+  PowerOff,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { DOCUMENT_TYPE_LABELS, USER_ROLE_LABELS } from '@/types'
-import type { WorkflowStep, UserRole } from '@/types'
+import {
+  getWorkflows,
+  saveWorkflow,
+  deleteWorkflow,
+} from '@/lib/store'
+import type { LocalWorkflow } from '@/lib/store'
 
 // =============================================================================
-// ワークフロー設定ページ（Client Component）
-// - 文書種別ごとのワークフロー定義一覧
-// - ステップエディタ（追加/削除/並び替え + ロール割り当て）
+// ワークフロー設定ページ（localStorage駆動）
 // =============================================================================
 
-/** ワークフロー定義の型 */
-interface WorkflowDef {
-  id: string
-  name: string
-  description: string | null
-  target_category: string | null
-  target_template_id: string | null
-  steps: WorkflowStep[]
-  is_active: boolean
-  created_at: string
-}
+/** 文書種別の選択肢 */
+const DOC_TYPES = [
+  { value: 'employment_cert', label: '在職証明書' },
+  { value: 'income_cert', label: '収入証明書' },
+  { value: 'retirement_cert', label: '退職証明書' },
+  { value: 'invoice', label: '請求書' },
+  { value: 'quotation', label: '見積書' },
+  { value: 'contract', label: '契約書' },
+  { value: 'other', label: 'その他' },
+]
 
-/** 利用可能なロール一覧 */
-const AVAILABLE_ROLES: { value: string; label: string }[] = [
+/** ステップ種別 */
+const STEP_TYPES = [
+  { value: 'confirm', label: '確認' },
+  { value: 'approve', label: '承認' },
+  { value: 'issue', label: '発行' },
+]
+
+/** 担当ロール */
+const STEP_ROLES = [
   { value: 'confirmer', label: '確認者' },
   { value: 'approver', label: '承認者' },
   { value: 'issuer', label: '発行者' },
@@ -51,152 +77,197 @@ const AVAILABLE_ROLES: { value: string; label: string }[] = [
   { value: 'system_admin', label: 'システム管理者' },
 ]
 
-/** ステップ種別の選択肢 */
-const STEP_TYPES: { value: string; label: string }[] = [
-  { value: 'confirm', label: '確認' },
-  { value: 'approve', label: '承認' },
-  { value: 'issue', label: '発行' },
-]
+/** 空のステップ */
+const emptyStep = (order: number) => ({
+  order,
+  name: '新しいステップ',
+  type: 'approve',
+  role: 'approver',
+  deadline_hours: 48,
+})
+
+/** ワークフローフォーム型 */
+interface WorkflowForm {
+  name: string
+  document_type: string
+  steps: LocalWorkflow['steps']
+  is_active: boolean
+}
+
+const emptyWorkflowForm = (): WorkflowForm => ({
+  name: '',
+  document_type: 'employment_cert',
+  steps: [emptyStep(1)],
+  is_active: true,
+})
 
 export default function WorkflowsPage() {
   const router = useRouter()
-  const supabase = createClient()
 
-  const [workflows, setWorkflows] = useState<WorkflowDef[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // --- 状態 ---
+  const [workflows, setWorkflows] = useState<LocalWorkflow[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [editingSteps, setEditingSteps] = useState<Record<string, WorkflowStep[]>>({})
-  const [savingId, setSavingId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [editingSteps, setEditingSteps] = useState<Record<string, LocalWorkflow['steps']>>({})
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<WorkflowForm>(emptyWorkflowForm())
+  const [deleteTarget, setDeleteTarget] = useState<LocalWorkflow | null>(null)
+  const [savedId, setSavedId] = useState<string | null>(null)
 
-  // ワークフロー一覧読み込み
+  // --- 初期読み込み ---
   useEffect(() => {
-    async function loadWorkflows() {
-      try {
-        const { data, error: fetchErr } = await supabase
-          .from('workflow_definitions')
-          .select('*')
-          .order('name')
+    setWorkflows(getWorkflows())
+  }, [])
 
-        if (fetchErr) throw fetchErr
-        setWorkflows((data as WorkflowDef[]) ?? [])
-      } catch {
-        setError('ワークフローの読み込みに失敗しました')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadWorkflows()
-  }, [supabase])
-
-  /** ワークフロー展開トグル */
-  const toggleExpand = (id: string) => {
-    if (expandedId === id) {
-      setExpandedId(null)
-    } else {
-      setExpandedId(id)
+  // --- ワークフロー展開トグル ---
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedId((prev) => {
+      if (prev === id) return null
+      // 展開時にステップをコピー
       const wf = workflows.find((w) => w.id === id)
-      if (wf && !editingSteps[id]) {
-        setEditingSteps((prev) => ({ ...prev, [id]: [...wf.steps] }))
+      if (wf) {
+        setEditingSteps((es) => ({ ...es, [id]: [...wf.steps] }))
       }
-    }
-  }
-
-  /** ステップ追加 */
-  const addStep = (workflowId: string) => {
-    const currentSteps = editingSteps[workflowId] ?? []
-    const newStep: WorkflowStep = {
-      id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: '新しいステップ',
-      order: currentSteps.length + 1,
-      type: 'approve',
-      assignee_ids: [],
-      assignee_role: 'approver' as UserRole,
-      required_count: null,
-      skip_condition: null,
-      auto_approve_condition: null,
-      deadline_hours: 48,
-      deadline_action: 'notify',
-    }
-    setEditingSteps((prev) => ({
-      ...prev,
-      [workflowId]: [...currentSteps, newStep],
-    }))
-  }
-
-  /** ステップ削除 */
-  const removeStep = (workflowId: string, stepId: string) => {
-    setEditingSteps((prev) => {
-      const updated = (prev[workflowId] ?? [])
-        .filter((s) => s.id !== stepId)
-        .map((s, i) => ({ ...s, order: i + 1 }))
-      return { ...prev, [workflowId]: updated }
+      return id
     })
-  }
+  }, [workflows])
 
-  /** ステップ並び替え */
-  const moveStep = (workflowId: string, stepId: string, direction: 'up' | 'down') => {
+  // --- ステップ追加（展開中のワークフロー） ---
+  const addStepToExpanded = useCallback((wfId: string) => {
     setEditingSteps((prev) => {
-      const steps = [...(prev[workflowId] ?? [])]
-      const index = steps.findIndex((s) => s.id === stepId)
+      const steps = prev[wfId] ?? []
+      return { ...prev, [wfId]: [...steps, emptyStep(steps.length + 1)] }
+    })
+  }, [])
+
+  // --- ステップ削除（展開中のワークフロー） ---
+  const removeStepFromExpanded = useCallback((wfId: string, order: number) => {
+    setEditingSteps((prev) => {
+      const updated = (prev[wfId] ?? [])
+        .filter((s) => s.order !== order)
+        .map((s, i) => ({ ...s, order: i + 1 }))
+      return { ...prev, [wfId]: updated }
+    })
+  }, [])
+
+  // --- ステップ並び替え（展開中のワークフロー） ---
+  const moveStepInExpanded = useCallback((wfId: string, order: number, direction: 'up' | 'down') => {
+    setEditingSteps((prev) => {
+      const steps = [...(prev[wfId] ?? [])]
+      const index = steps.findIndex((s) => s.order === order)
       if (index < 0) return prev
       const targetIndex = direction === 'up' ? index - 1 : index + 1
       if (targetIndex < 0 || targetIndex >= steps.length) return prev
-      ;[steps[index], steps[targetIndex]] = [steps[targetIndex], steps[index]]
+      const temp = steps[index]
+      steps[index] = steps[targetIndex]
+      steps[targetIndex] = temp
       const reordered = steps.map((s, i) => ({ ...s, order: i + 1 }))
-      return { ...prev, [workflowId]: reordered }
+      return { ...prev, [wfId]: reordered }
     })
-  }
+  }, [])
 
-  /** ステップのプロパティ更新 */
-  const updateStep = (
-    workflowId: string,
-    stepId: string,
-    updates: Partial<WorkflowStep>
-  ) => {
-    setEditingSteps((prev) => ({
+  // --- ステッププロパティ更新（展開中のワークフロー） ---
+  const updateStepInExpanded = useCallback(
+    (wfId: string, order: number, updates: Partial<LocalWorkflow['steps'][0]>) => {
+      setEditingSteps((prev) => ({
+        ...prev,
+        [wfId]: (prev[wfId] ?? []).map((s) =>
+          s.order === order ? { ...s, ...updates } : s
+        ),
+      }))
+    },
+    []
+  )
+
+  // --- 展開中のワークフローのステップを保存 ---
+  const saveExpandedSteps = useCallback((wfId: string) => {
+    const wf = workflows.find((w) => w.id === wfId)
+    if (!wf) return
+    const updatedWf: LocalWorkflow = { ...wf, steps: editingSteps[wfId] ?? wf.steps }
+    saveWorkflow(updatedWf)
+    setWorkflows(getWorkflows())
+    setSavedId(wfId)
+    setTimeout(() => setSavedId(null), 2000)
+  }, [workflows, editingSteps])
+
+  // --- 有効/無効トグル ---
+  const toggleActive = useCallback((wfId: string) => {
+    const wf = workflows.find((w) => w.id === wfId)
+    if (!wf) return
+    const updatedWf: LocalWorkflow = { ...wf, is_active: !wf.is_active }
+    saveWorkflow(updatedWf)
+    setWorkflows(getWorkflows())
+  }, [workflows])
+
+  // --- 新規/編集ダイアログを開く ---
+  const openDialog = useCallback((wf?: LocalWorkflow) => {
+    if (wf) {
+      setEditingId(wf.id)
+      setForm({
+        name: wf.name,
+        document_type: wf.document_type,
+        steps: [...wf.steps],
+        is_active: wf.is_active,
+      })
+    } else {
+      setEditingId(null)
+      setForm(emptyWorkflowForm())
+    }
+    setDialogOpen(true)
+  }, [])
+
+  // --- フォーム内のステップ操作 ---
+  const addFormStep = useCallback(() => {
+    setForm((prev) => ({
       ...prev,
-      [workflowId]: (prev[workflowId] ?? []).map((s) =>
-        s.id === stepId ? { ...s, ...updates } : s
+      steps: [...prev.steps, emptyStep(prev.steps.length + 1)],
+    }))
+  }, [])
+
+  const removeFormStep = useCallback((order: number) => {
+    setForm((prev) => ({
+      ...prev,
+      steps: prev.steps
+        .filter((s) => s.order !== order)
+        .map((s, i) => ({ ...s, order: i + 1 })),
+    }))
+  }, [])
+
+  const updateFormStep = useCallback((order: number, updates: Partial<LocalWorkflow['steps'][0]>) => {
+    setForm((prev) => ({
+      ...prev,
+      steps: prev.steps.map((s) =>
+        s.order === order ? { ...s, ...updates } : s
       ),
     }))
-  }
+  }, [])
 
-  /** ワークフロー保存 */
-  const handleSave = async (workflowId: string) => {
-    setSavingId(workflowId)
-    setError(null)
-
-    try {
-      const steps = editingSteps[workflowId] ?? []
-      const { error: updateErr } = await supabase
-        .from('workflow_definitions')
-        .update({
-          steps,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', workflowId)
-
-      if (updateErr) throw updateErr
-
-      // ローカル状態を更新
-      setWorkflows((prev) =>
-        prev.map((w) => (w.id === workflowId ? { ...w, steps } : w))
-      )
-    } catch {
-      setError('保存に失敗しました')
-    } finally {
-      setSavingId(null)
+  // --- 保存（新規/編集ダイアログ） ---
+  const handleSaveDialog = useCallback(() => {
+    const wf: LocalWorkflow = {
+      id: editingId ?? `wf-${Date.now()}`,
+      name: form.name,
+      document_type: form.document_type,
+      steps: form.steps,
+      is_active: form.is_active,
     }
-  }
+    saveWorkflow(wf)
+    setWorkflows(getWorkflows())
+    setDialogOpen(false)
+  }, [editingId, form])
 
-  if (isLoading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-      </div>
-    )
+  // --- 削除確定 ---
+  const handleDelete = useCallback(() => {
+    if (!deleteTarget) return
+    deleteWorkflow(deleteTarget.id)
+    setWorkflows(getWorkflows())
+    setDeleteTarget(null)
+    if (expandedId === deleteTarget.id) setExpandedId(null)
+  }, [deleteTarget, expandedId])
+
+  // --- 文書種別ラベル ---
+  const docTypeLabel = (val: string): string => {
+    return DOC_TYPES.find((d) => d.value === val)?.label ?? val
   }
 
   return (
@@ -223,20 +294,11 @@ export default function WorkflowsPage() {
             </p>
           </div>
         </div>
-        <Button size="sm">
+        <Button size="sm" onClick={() => openDialog()}>
           <Plus className="mr-1.5 h-4 w-4" />
           新規フロー
         </Button>
       </div>
-
-      {/* エラー表示 */}
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-3">
-            <p className="text-sm text-red-700">{error}</p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* ワークフロー一覧 */}
       {workflows.length === 0 ? (
@@ -256,12 +318,12 @@ export default function WorkflowsPage() {
 
             return (
               <Card key={wf.id} className={isExpanded ? 'ring-2 ring-blue-100' : ''}>
-                {/* ワークフローヘッダー（クリックで展開） */}
-                <div
-                  className="flex cursor-pointer items-center justify-between px-6 py-4"
-                  onClick={() => toggleExpand(wf.id)}
-                >
-                  <div className="flex items-center gap-3">
+                {/* ワークフローヘッダー */}
+                <div className="flex items-center justify-between px-6 py-4">
+                  <div
+                    className="flex flex-1 cursor-pointer items-center gap-3"
+                    onClick={() => toggleExpand(wf.id)}
+                  >
                     {isExpanded ? (
                       <ChevronDown className="h-4 w-4 text-slate-400" />
                     ) : (
@@ -269,30 +331,39 @@ export default function WorkflowsPage() {
                     )}
                     <div>
                       <h3 className="font-medium text-slate-900">{wf.name}</h3>
-                      {wf.target_category && (
-                        <Badge variant="secondary" className="mt-0.5 text-[10px]">
-                          {DOCUMENT_TYPE_LABELS[wf.target_category] ??
-                            wf.target_category}
-                        </Badge>
-                      )}
+                      <Badge variant="secondary" className="mt-0.5 text-[10px]">
+                        {docTypeLabel(wf.document_type)}
+                      </Badge>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     {/* ステップの簡易表示 */}
                     <div className="hidden items-center gap-1 sm:flex">
-                      {(wf.steps ?? [])
+                      {wf.steps
                         .sort((a, b) => a.order - b.order)
                         .map((step, i) => (
-                          <div key={step.id} className="flex items-center gap-1">
-                            {i > 0 && (
-                              <span className="text-slate-300">→</span>
-                            )}
+                          <div key={step.order} className="flex items-center gap-1">
+                            {i > 0 && <span className="text-slate-300">&rarr;</span>}
                             <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
                               {step.name}
                             </span>
                           </div>
                         ))}
                     </div>
+                    {/* 有効/無効トグル */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => toggleActive(wf.id)}
+                      title={wf.is_active ? '無効にする' : '有効にする'}
+                    >
+                      {wf.is_active ? (
+                        <Power className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <PowerOff className="h-4 w-4 text-slate-400" />
+                      )}
+                    </Button>
                     <Badge
                       className={
                         wf.is_active
@@ -302,6 +373,18 @@ export default function WorkflowsPage() {
                     >
                       {wf.is_active ? '有効' : '無効'}
                     </Badge>
+                    {/* 編集・削除 */}
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openDialog(wf)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
+                      onClick={() => setDeleteTarget(wf)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
 
@@ -317,7 +400,7 @@ export default function WorkflowsPage() {
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => addStep(wf.id)}
+                          onClick={() => addStepToExpanded(wf.id)}
                         >
                           <Plus className="mr-1 h-3 w-3" />
                           ステップ追加
@@ -325,15 +408,19 @@ export default function WorkflowsPage() {
                         <Button
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => handleSave(wf.id)}
-                          disabled={savingId === wf.id}
+                          onClick={() => saveExpandedSteps(wf.id)}
                         >
-                          {savingId === wf.id ? (
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          {savedId === wf.id ? (
+                            <>
+                              <Check className="mr-1 h-3 w-3" />
+                              保存済
+                            </>
                           ) : (
-                            <Save className="mr-1 h-3 w-3" />
+                            <>
+                              <Save className="mr-1 h-3 w-3" />
+                              保存
+                            </>
                           )}
-                          保存
                         </Button>
                       </div>
                     </div>
@@ -344,7 +431,7 @@ export default function WorkflowsPage() {
                         .sort((a, b) => a.order - b.order)
                         .map((step, index) => (
                           <div
-                            key={step.id}
+                            key={step.order}
                             className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3"
                           >
                             {/* 並び替え */}
@@ -352,7 +439,7 @@ export default function WorkflowsPage() {
                               <button
                                 type="button"
                                 className="text-slate-300 hover:text-slate-500 disabled:opacity-30"
-                                onClick={() => moveStep(wf.id, step.id, 'up')}
+                                onClick={() => moveStepInExpanded(wf.id, step.order, 'up')}
                                 disabled={index === 0}
                               >
                                 <ArrowUp className="h-3 w-3" />
@@ -360,7 +447,7 @@ export default function WorkflowsPage() {
                               <button
                                 type="button"
                                 className="text-slate-300 hover:text-slate-500 disabled:opacity-30"
-                                onClick={() => moveStep(wf.id, step.id, 'down')}
+                                onClick={() => moveStepInExpanded(wf.id, step.order, 'down')}
                                 disabled={index === steps.length - 1}
                               >
                                 <ArrowDown className="h-3 w-3" />
@@ -376,9 +463,7 @@ export default function WorkflowsPage() {
                             <Input
                               value={step.name}
                               onChange={(e) =>
-                                updateStep(wf.id, step.id, {
-                                  name: e.target.value,
-                                })
+                                updateStepInExpanded(wf.id, step.order, { name: e.target.value })
                               }
                               className="h-8 w-40 text-sm"
                               placeholder="ステップ名"
@@ -388,34 +473,25 @@ export default function WorkflowsPage() {
                             <select
                               value={step.type}
                               onChange={(e) =>
-                                updateStep(wf.id, step.id, {
-                                  type: e.target.value as WorkflowStep['type'],
-                                })
+                                updateStepInExpanded(wf.id, step.order, { type: e.target.value })
                               }
                               className="h-8 rounded-md border border-slate-200 px-2 text-xs"
                             >
                               {STEP_TYPES.map((t) => (
-                                <option key={t.value} value={t.value}>
-                                  {t.label}
-                                </option>
+                                <option key={t.value} value={t.value}>{t.label}</option>
                               ))}
                             </select>
 
                             {/* 担当ロール */}
                             <select
-                              value={step.assignee_role ?? ''}
+                              value={step.role}
                               onChange={(e) =>
-                                updateStep(wf.id, step.id, {
-                                  assignee_role: e.target.value as UserRole,
-                                })
+                                updateStepInExpanded(wf.id, step.order, { role: e.target.value })
                               }
                               className="h-8 rounded-md border border-slate-200 px-2 text-xs"
                             >
-                              <option value="">ロール選択</option>
-                              {AVAILABLE_ROLES.map((r) => (
-                                <option key={r.value} value={r.value}>
-                                  {r.label}
-                                </option>
+                              {STEP_ROLES.map((r) => (
+                                <option key={r.value} value={r.value}>{r.label}</option>
                               ))}
                             </select>
 
@@ -423,12 +499,10 @@ export default function WorkflowsPage() {
                             <div className="flex items-center gap-1">
                               <Input
                                 type="number"
-                                value={step.deadline_hours ?? ''}
+                                value={step.deadline_hours}
                                 onChange={(e) =>
-                                  updateStep(wf.id, step.id, {
-                                    deadline_hours: e.target.value
-                                      ? Number(e.target.value)
-                                      : null,
+                                  updateStepInExpanded(wf.id, step.order, {
+                                    deadline_hours: Number(e.target.value) || 0,
                                   })
                                 }
                                 className="h-8 w-16 text-xs"
@@ -442,7 +516,7 @@ export default function WorkflowsPage() {
                               variant="ghost"
                               size="sm"
                               className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
-                              onClick={() => removeStep(wf.id, step.id)}
+                              onClick={() => removeStepFromExpanded(wf.id, step.order)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -462,6 +536,141 @@ export default function WorkflowsPage() {
           })}
         </div>
       )}
+
+      {/* 新規/編集ダイアログ */}
+      <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {editingId ? 'ワークフローを編集' : '新規ワークフロー作成'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              承認フローの基本情報とステップを設定してください。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
+            {/* 基本情報 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="wf-name">フロー名</Label>
+                <Input
+                  id="wf-name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="例: 標準承認フロー"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>文書種別</Label>
+                <Select
+                  value={form.document_type}
+                  onValueChange={(v) => setForm({ ...form, document_type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DOC_TYPES.map((d) => (
+                      <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* ステップ */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <Label>ステップ</Label>
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addFormStep}>
+                  <Plus className="mr-1 h-3 w-3" />
+                  追加
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {form.steps.map((step) => (
+                  <div
+                    key={step.order}
+                    className="flex items-center gap-2 rounded-lg border border-slate-200 p-2"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">
+                      {step.order}
+                    </span>
+                    <Input
+                      value={step.name}
+                      onChange={(e) => updateFormStep(step.order, { name: e.target.value })}
+                      className="h-7 w-32 text-xs"
+                      placeholder="名前"
+                    />
+                    <select
+                      value={step.type}
+                      onChange={(e) => updateFormStep(step.order, { type: e.target.value })}
+                      className="h-7 rounded-md border border-slate-200 px-1.5 text-xs"
+                    >
+                      {STEP_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={step.role}
+                      onChange={(e) => updateFormStep(step.order, { role: e.target.value })}
+                      className="h-7 rounded-md border border-slate-200 px-1.5 text-xs"
+                    >
+                      {STEP_ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    <Input
+                      type="number"
+                      value={step.deadline_hours}
+                      onChange={(e) => updateFormStep(step.order, { deadline_hours: Number(e.target.value) || 0 })}
+                      className="h-7 w-14 text-xs"
+                    />
+                    <span className="text-[10px] text-slate-400">h</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-red-400 hover:text-red-600"
+                      onClick={() => removeFormStep(step.order)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveDialog} disabled={!form.name.trim()}>
+              {editingId ? '更新' : '作成'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 削除確認ダイアログ */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>削除の確認</AlertDialogTitle>
+            <AlertDialogDescription>
+              ワークフロー「{deleteTarget?.name}」を削除してもよろしいですか？この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

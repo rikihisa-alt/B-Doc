@@ -1,7 +1,11 @@
 'use client'
 
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Settings,
   User,
@@ -11,15 +15,19 @@ import {
   Users,
   Bell,
   ChevronRight,
+  Save,
+  Check,
 } from 'lucide-react'
 import Link from 'next/link'
 import { USER_ROLE_LABELS } from '@/types'
+import { getSettings, saveSettings } from '@/lib/store'
+import type { LocalSettings } from '@/lib/store'
 
 // =============================================================================
-// 設定ページ（Client Component - デモデータ版）
+// 設定ページ（localStorage駆動 - 全フィールド編集可能）
 // =============================================================================
 
-// デモ用プロフィールデータ
+// デモ用プロフィールデータ（静的）
 const demoProfile = {
   display_name: '管理者 太郎',
   email: 'taro@backlly.example.com',
@@ -29,20 +37,36 @@ const demoProfile = {
   last_login_at: '2026-03-20T09:00:00Z',
 }
 
-const demoOrganization = {
-  name: '株式会社Backlly',
-  slug: 'backlly',
-  plan: 'business',
-  created_at: '2024-01-15T00:00:00Z',
-}
-
 const demoUserId = 'demo-user-001'
 
 export default function SettingsPage() {
+  // --- 状態 ---
+  const [settings, setSettingsState] = useState<LocalSettings | null>(null)
+  const [saved, setSaved] = useState(false)
+
   const profile = demoProfile
-  const organization = demoOrganization
-  const userRoles: string[] = profile?.roles ?? []
+  const userRoles: string[] = profile.roles
   const isAdmin = userRoles.includes('system_admin')
+
+  // --- 初期読み込み ---
+  useEffect(() => {
+    setSettingsState(getSettings())
+  }, [])
+
+  // --- 設定保存 ---
+  const handleSave = useCallback(() => {
+    if (!settings) return
+    saveSettings(settings)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }, [settings])
+
+  // --- 設定フィールド更新ヘルパー ---
+  const updateField = useCallback(<K extends keyof LocalSettings>(key: K, value: LocalSettings[K]) => {
+    setSettingsState((prev) => prev ? { ...prev, [key]: value } : prev)
+  }, [])
+
+  if (!settings) return null
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -115,43 +139,86 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* 組織設定（管理者のみ） */}
-      {isAdmin && (
-        <Card>
-          <CardHeader className="pb-4">
+      {/* システム設定（編集可能） */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <Building2 className="h-5 w-5 text-purple-600" />
-              組織設定
+              システム設定
             </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">組織名</p>
-                <p className="mt-1.5 text-sm font-medium text-slate-900">{organization.name}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">スラッグ</p>
-                <code className="mt-1.5 block rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">
-                  {organization.slug}
-                </code>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">プラン</p>
-                <Badge className="mt-1.5 bg-blue-50 text-blue-700 border-blue-200">
-                  {organization.plan}
-                </Badge>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">作成日</p>
-                <p className="mt-1.5 text-sm text-slate-500">
-                  {new Date(organization.created_at).toLocaleDateString('ja-JP')}
-                </p>
-              </div>
+            <Button size="sm" onClick={handleSave}>
+              {saved ? (
+                <>
+                  <Check className="mr-1.5 h-4 w-4" />
+                  保存しました
+                </>
+              ) : (
+                <>
+                  <Save className="mr-1.5 h-4 w-4" />
+                  設定を保存
+                </>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="s-company">会社名</Label>
+              <Input
+                id="s-company"
+                value={settings.companyName}
+                onChange={(e) => updateField('companyName', e.target.value)}
+              />
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="space-y-1.5">
+              <Label htmlFor="s-system">システム名</Label>
+              <Input
+                id="s-system"
+                value={settings.systemName}
+                onChange={(e) => updateField('systemName', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-prefix">文書番号プレフィックス</Label>
+              <Input
+                id="s-prefix"
+                value={settings.defaultDocumentPrefix}
+                onChange={(e) => updateField('defaultDocumentPrefix', e.target.value)}
+              />
+              <p className="text-xs text-slate-400">例: DOC, INV, EMP</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-interval">自動保存間隔（分）</Label>
+              <Input
+                id="s-interval"
+                type="number"
+                min={1}
+                max={60}
+                value={settings.autoSaveInterval}
+                onChange={(e) => updateField('autoSaveInterval', Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-watermark-draft">下書き透かし文字</Label>
+              <Input
+                id="s-watermark-draft"
+                value={settings.pdfWatermarkDraft}
+                onChange={(e) => updateField('pdfWatermarkDraft', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-watermark-conf">社外秘透かし文字</Label>
+              <Input
+                id="s-watermark-conf"
+                value={settings.pdfWatermarkConfidential}
+                onChange={(e) => updateField('pdfWatermarkConfidential', e.target.value)}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* クイックリンク */}
       <div>

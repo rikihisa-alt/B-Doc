@@ -57,6 +57,40 @@ import {
 } from 'lucide-react'
 
 // ============================================================
+// Google Fonts 定義
+// ============================================================
+
+/** 利用可能なフォント定義 */
+interface FontOption {
+  value: string
+  label: string
+  css: string
+}
+
+const FONT_OPTIONS: FontOption[] = [
+  { value: 'Noto Sans JP', label: 'ゴシック体', css: "'Noto Sans JP', sans-serif" },
+  { value: 'Noto Serif JP', label: '明朝体', css: "'Noto Serif JP', serif" },
+  { value: 'Sawarabi Mincho', label: 'さわらび明朝', css: "'Sawarabi Mincho', serif" },
+  { value: 'M PLUS 1p', label: 'Mプラス', css: "'M PLUS 1p', sans-serif" },
+  { value: 'Kosugi Maru', label: '小杉丸ゴシック', css: "'Kosugi Maru', sans-serif" },
+  { value: 'Zen Maru Gothic', label: 'ゼンマルゴシック', css: "'Zen Maru Gothic', sans-serif" },
+  { value: 'monospace', label: '等幅', css: "'Courier New', monospace" },
+]
+
+/** Google Fonts のインポート URL */
+const GOOGLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Sawarabi+Mincho&family=M+PLUS+1p:wght@400;700&family=Kosugi+Maru&family=Zen+Maru+Gothic:wght@400;700&display=swap'
+
+/** フォントファミリー値からCSS値を取得 */
+function getFontCss(fontFamily: string | undefined): string {
+  if (!fontFamily) return "'Noto Sans JP', sans-serif"
+  const found = FONT_OPTIONS.find((f) => f.value === fontFamily)
+  return found ? found.css : "'Noto Sans JP', sans-serif"
+}
+
+/** 行間プリセット */
+const LINE_HEIGHT_OPTIONS = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+
+// ============================================================
 // ブロック種別の定義情報
 // ============================================================
 
@@ -152,6 +186,111 @@ function AlignButtons({ align, onChange }: { align: 'left' | 'center' | 'right';
   )
 }
 
+/** フォント選択ドロップダウン（フォントプレビュー付き） */
+function FontFamilySelect({ value, onChange }: { value: string | undefined; onChange: (v: string) => void }) {
+  return (
+    <select
+      className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+      value={value ?? 'Noto Sans JP'}
+      onChange={(e) => onChange(e.target.value)}
+      title="フォント"
+    >
+      {FONT_OPTIONS.map((f) => (
+        <option key={f.value} value={f.value} style={{ fontFamily: f.css }}>
+          {f.label}（{f.value}）
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** フォントサイズ入力（8-72pt） */
+function FontSizeInput({ value, onChange }: { value: number | undefined; onChange: (v: number) => void }) {
+  return (
+    <input
+      type="number"
+      min={8}
+      max={72}
+      step={1}
+      value={value ?? 12}
+      onChange={(e) => {
+        const n = Number(e.target.value)
+        if (n >= 8 && n <= 72) onChange(n)
+      }}
+      className="w-14 rounded border border-slate-300 px-1.5 py-1 text-center text-xs"
+      title="フォントサイズ (pt)"
+    />
+  )
+}
+
+/** 行間セレクタ */
+function LineHeightSelect({ value, onChange }: { value: number | undefined; onChange: (v: number) => void }) {
+  return (
+    <select
+      className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+      value={value ?? 1.6}
+      onChange={(e) => onChange(Number(e.target.value))}
+      title="行間"
+    >
+      {LINE_HEIGHT_OPTIONS.map((lh) => (
+        <option key={lh} value={lh}>行間 {lh.toFixed(1)}</option>
+      ))}
+    </select>
+  )
+}
+
+/** 文字間隔入力（0-20px） */
+function LetterSpacingInput({ value, onChange }: { value: number | undefined; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[10px] text-slate-400">字間</span>
+      <input
+        type="number"
+        min={0}
+        max={20}
+        step={1}
+        value={value ?? 0}
+        onChange={(e) => {
+          const n = Number(e.target.value)
+          if (n >= 0 && n <= 20) onChange(n)
+        }}
+        className="w-12 rounded border border-slate-300 px-1 py-1 text-center text-xs"
+        title="文字間隔 (px)"
+      />
+    </div>
+  )
+}
+
+/** テキストブロック共通のフォントスタイルツールバー */
+function FontStyleToolbar({
+  block,
+  onChange,
+  showLetterSpacing,
+  showLineHeight,
+  showFontSize,
+}: {
+  block: TemplateBlock
+  onChange: (updated: TemplateBlock) => void
+  showLetterSpacing?: boolean
+  showLineHeight?: boolean
+  showFontSize?: boolean
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <FontFamilySelect value={block.fontFamily} onChange={(fontFamily) => onChange({ ...block, fontFamily })} />
+      {showFontSize !== false && (
+        <FontSizeInput value={block.fontSize} onChange={(fontSize) => onChange({ ...block, fontSize })} />
+      )}
+      {showLineHeight !== false && (
+        <LineHeightSelect value={block.lineHeight} onChange={(lineHeight) => onChange({ ...block, lineHeight })} />
+      )}
+      {showLetterSpacing && (
+        <LetterSpacingInput value={block.letterSpacing} onChange={(letterSpacing) => onChange({ ...block, letterSpacing })} />
+      )}
+    </div>
+  )
+}
+
 // ============================================================
 // ブロック別エディタコンポーネント
 // ============================================================
@@ -166,7 +305,7 @@ interface BlockEditorProps {
 function HeadingBlockEditor({ block, onChange }: BlockEditorProps) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select
           className="rounded border border-slate-300 px-2 py-1.5 text-sm"
           value={block.level ?? 1}
@@ -179,24 +318,21 @@ function HeadingBlockEditor({ block, onChange }: BlockEditorProps) {
         </select>
         <AlignButtons align={block.align ?? 'center'} onChange={(align) => onChange({ ...block, align })} />
       </div>
+      {/* フォント・文字間隔ツールバー */}
+      <FontStyleToolbar
+        block={block}
+        onChange={onChange}
+        showLetterSpacing
+        showLineHeight={false}
+        showFontSize={false}
+      />
       <Input
         value={block.content ?? ''}
         onChange={(e) => onChange({ ...block, content: e.target.value })}
         placeholder="見出しテキストを入力"
         className="text-lg font-bold"
+        style={{ fontFamily: getFontCss(block.fontFamily) }}
       />
-      <div className="flex items-center gap-2">
-        <Label className="whitespace-nowrap text-xs text-slate-500">文字間隔</Label>
-        <input
-          type="range"
-          min={0}
-          max={20}
-          value={block.letterSpacing ?? 0}
-          onChange={(e) => onChange({ ...block, letterSpacing: Number(e.target.value) })}
-          className="h-1.5 flex-1"
-        />
-        <span className="w-12 text-right text-xs text-slate-500">{block.letterSpacing ?? 0}px</span>
-      </div>
     </div>
   )
 }
@@ -229,17 +365,9 @@ function ParagraphBlockEditor({ block, onChange }: BlockEditorProps) {
         </button>
         <div className="mx-1 h-5 w-px bg-slate-300" />
         <AlignButtons align={block.align ?? 'left'} onChange={(align) => onChange({ ...block, align })} />
-        <div className="mx-1 h-5 w-px bg-slate-300" />
-        <select
-          className="rounded border border-slate-300 px-1.5 py-1 text-xs"
-          value={block.fontSize ?? 12}
-          onChange={(e) => onChange({ ...block, fontSize: Number(e.target.value) })}
-        >
-          {[9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24].map((s) => (
-            <option key={s} value={s}>{s}pt</option>
-          ))}
-        </select>
       </div>
+      {/* フォント・サイズ・行間ツールバー */}
+      <FontStyleToolbar block={block} onChange={onChange} showLineHeight showFontSize />
       <textarea
         value={block.content ?? ''}
         onChange={(e) => onChange({ ...block, content: e.target.value })}
@@ -247,24 +375,12 @@ function ParagraphBlockEditor({ block, onChange }: BlockEditorProps) {
         rows={3}
         className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
         style={{
+          fontFamily: getFontCss(block.fontFamily),
           fontWeight: block.bold ? 'bold' : 'normal',
           fontStyle: block.italic ? 'italic' : 'normal',
           textDecoration: block.underline ? 'underline' : 'none',
         }}
       />
-      <div className="flex items-center gap-2">
-        <Label className="whitespace-nowrap text-xs text-slate-500">行間</Label>
-        <input
-          type="range"
-          min={1.0}
-          max={3.0}
-          step={0.1}
-          value={block.lineHeight ?? 1.8}
-          onChange={(e) => onChange({ ...block, lineHeight: Number(e.target.value) })}
-          className="h-1.5 flex-1"
-        />
-        <span className="w-10 text-right text-xs text-slate-500">{(block.lineHeight ?? 1.8).toFixed(1)}</span>
-      </div>
     </div>
   )
 }
@@ -290,6 +406,7 @@ function VariableLineBlockEditor({ block, onChange }: BlockEditorProps) {
 
   return (
     <div className="space-y-3">
+      <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight={false} />
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label className="text-xs text-slate-500">ラベル</Label>
@@ -574,12 +691,15 @@ function NoticeBlockEditor({ block, onChange }: BlockEditorProps) {
           <option value="warning">警告</option>
         </select>
       </div>
+      {/* フォント・サイズツールバー */}
+      <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight />
       <textarea
         value={block.content ?? ''}
         onChange={(e) => onChange({ ...block, content: e.target.value })}
         placeholder="注意書きテキスト..."
         rows={2}
         className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        style={{ fontFamily: getFontCss(block.fontFamily) }}
       />
     </div>
   )
@@ -589,8 +709,15 @@ function NoticeBlockEditor({ block, onChange }: BlockEditorProps) {
 function DateLineBlockEditor({ block, onChange }: BlockEditorProps) {
   return (
     <div className="space-y-2">
+      <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight={false} />
       <Label className="text-xs text-slate-500">日付テキスト</Label>
-      <Input value={block.content ?? ''} onChange={(e) => onChange({ ...block, content: e.target.value })} placeholder="令和○年○月○日 or {{issue_date}}" className="mt-1" />
+      <Input
+        value={block.content ?? ''}
+        onChange={(e) => onChange({ ...block, content: e.target.value })}
+        placeholder="令和○年○月○日 or {{issue_date}}"
+        className="mt-1"
+        style={{ fontFamily: getFontCss(block.fontFamily) }}
+      />
       <p className="text-xs text-slate-400">{'{{変数名}} を使うと文書作成時に値を入力できます'}</p>
     </div>
   )
@@ -611,6 +738,7 @@ function ImageBlockEditor({ block, onChange }: BlockEditorProps) {
 function AddressBlockEditor({ block, onChange }: BlockEditorProps) {
   return (
     <div className="space-y-2">
+      <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight={false} />
       <div>
         <Label className="text-xs text-slate-500">会社名</Label>
         <Input value={block.addressCompany ?? ''} onChange={(e) => onChange({ ...block, addressCompany: e.target.value })} placeholder="株式会社○○ or {{client_name}}" className="mt-1" />
@@ -714,7 +842,13 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
       const sizes = { 1: 'text-[14px]', 2: 'text-[12px]', 3: 'text-[10px]', 4: 'text-[9px]' }
       const sizeClass = sizes[(block.level ?? 1) as keyof typeof sizes] ?? 'text-[14px]'
       return (
-        <div className={`${alignClass} ${sizeClass} font-bold`} style={{ letterSpacing: `${(block.letterSpacing ?? 0) * 0.5}px` }}>
+        <div
+          className={`${alignClass} ${sizeClass} font-bold`}
+          style={{
+            letterSpacing: `${(block.letterSpacing ?? 0) * 0.5}px`,
+            fontFamily: getFontCss(block.fontFamily),
+          }}
+        >
           <RenderText text={block.content ?? ''} />
         </div>
       )
@@ -724,10 +858,12 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
         <div
           className={`${alignClass} text-[8px] leading-relaxed`}
           style={{
+            fontFamily: getFontCss(block.fontFamily),
             fontWeight: block.bold ? 'bold' : 'normal',
             fontStyle: block.italic ? 'italic' : 'normal',
             textDecoration: block.underline ? 'underline' : 'none',
             lineHeight: block.lineHeight ?? 1.8,
+            fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined,
           }}
         >
           {(block.content ?? '').split('\n').map((line, i) => (
@@ -737,7 +873,7 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
       )
     case 'variable_line':
       return (
-        <div className="text-[8px]">
+        <div className="text-[8px]" style={{ fontFamily: getFontCss(block.fontFamily), fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined }}>
           {block.variableLabel || 'ラベル'}: <span className="rounded bg-amber-100 px-0.5 font-mono text-amber-700">{`{{${block.variableKey || 'key'}}}`}</span>
         </div>
       )
@@ -801,7 +937,14 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
     case 'notice': {
       const borderColor = block.noticeStyle === 'warning' ? 'border-amber-400 bg-amber-50' : block.noticeStyle === 'info' ? 'border-blue-400 bg-blue-50' : 'border-slate-400'
       return (
-        <div className={`rounded border ${borderColor} p-1.5 text-[7px]`}>
+        <div
+          className={`rounded border ${borderColor} p-1.5 text-[7px]`}
+          style={{
+            fontFamily: getFontCss(block.fontFamily),
+            fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined,
+            lineHeight: block.lineHeight ?? 1.6,
+          }}
+        >
           {(block.content ?? '').split('\n').map((line, i) => (
             <div key={i}><RenderText text={line} /></div>
           ))}
@@ -818,14 +961,14 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
       )
     case 'date_line':
       return (
-        <div className="text-right text-[8px]">
+        <div className="text-right text-[8px]" style={{ fontFamily: getFontCss(block.fontFamily), fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined }}>
           <RenderText text={block.content ?? '令和○年○月○日'} />
         </div>
       )
     case 'address_block':
       return (
-        <div className="text-[8px]">
-          <div className="text-[10px] font-bold">
+        <div className="text-[8px]" style={{ fontFamily: getFontCss(block.fontFamily), fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined }}>
+          <div className="text-[10px] font-bold" style={{ fontFamily: getFontCss(block.fontFamily) }}>
             <RenderText text={block.addressCompany || '会社名'} /> {block.addressSuffix ?? '御中'}
           </div>
           {block.addressDepartment && <div><RenderText text={block.addressDepartment} /></div>}
@@ -886,6 +1029,17 @@ export default function TemplateEditPage() {
   // ドラッグ&ドロップ用
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  // Google Fonts の読み込み
+  useEffect(() => {
+    const existingLink = document.querySelector(`link[href="${GOOGLE_FONTS_URL}"]`)
+    if (!existingLink) {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = GOOGLE_FONTS_URL
+      document.head.appendChild(link)
+    }
+  }, [])
 
   // 初期データ読み込み
   useEffect(() => {

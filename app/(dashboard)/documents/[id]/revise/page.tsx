@@ -3,17 +3,24 @@
 // =============================================================================
 // B-Doc 文書修正ページ（差戻し後の修正・再申請）
 // 差戻し理由を上部に表示し、既存値をプリフィル、変更フィールドをハイライト
-// 自動保存: 3分間隔 + 30秒デバウンス
+// localStorage ストアを使用
 // =============================================================================
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import {
+  getDocument,
+  saveDocument,
+  getApprovalRecords,
+  addAuditLog,
+} from '@/lib/store'
+import type { LocalDocument } from '@/lib/store'
+import { DOCUMENT_STATUS } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -32,40 +39,30 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { ReturnNotice } from '@/components/document/return-notice'
-import { A4Preview } from '@/components/document/a4-preview'
-import type { TemplateVariable, TemplateVersion } from '@/types'
+import type { TemplateVariable } from '@/types'
 import {
   ArrowLeft,
   Save,
   Send,
   Loader2,
-  Circle,
+  AlertTriangle,
 } from 'lucide-react'
-
-/** 自動保存間隔: 3分 */
-const AUTO_SAVE_INTERVAL = 3 * 60 * 1000
-/** デバウンス遅延: 30秒 */
-const DEBOUNCE_DELAY = 30 * 1000
 
 export default function ReviseDocumentPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const documentId = params.id
-  const supabase = createClient()
 
   // ---------- フォーム状態 ----------
   const [title, setTitle] = useState('')
-  const [templateVariables, setTemplateVariables] = useState<TemplateVariable[]>([])
-  const [bodyTemplate, setBodyTemplate] = useState('')
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [originalValues, setOriginalValues] = useState<Record<string, string>>({})
+  const [originalDoc, setOriginalDoc] = useState<LocalDocument | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   // ---------- 差戻し情報 ----------
   const [returnInfo, setReturnInfo] = useState<{
     returnerName: string
-    returnerRole: string
     comment: string
     returnedAt: string
   } | null>(null)
@@ -74,11 +71,26 @@ export default function ReviseDocumentPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [templateName, setTemplateName] = useState('')
 
-  const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // ---------- テンプレート変数（簡易版） ----------
+  const templateVariables = useMemo<TemplateVariable[]>(() => {
+    // ストアの values キーからテンプレート変数を復元する
+    if (!originalDoc) return []
+    return Object.keys(originalDoc.values).map((key) => ({
+      name: key,
+      label: key,
+      type: 'text' as const,
+      required: false,
+      default_value: null,
+      placeholder: null,
+      help_text: null,
+      validation: null,
+      options: null,
+      display_order: 0,
+      visible_condition: null,
+    }))
+  }, [originalDoc])
 
   /** 変更されたフィールドの検出 */
   const changedFields = useMemo(() => {
@@ -95,97 +107,46 @@ export default function ReviseDocumentPage() {
   // 文書データの読み込み
   // ============================================================
   useEffect(() => {
-    async function loadDocument() {
-      setIsLoading(true)
-      try {
-        // 文書本体を取得
-        const { data: doc } = await supabase
-          .from('documents')
-          .select('*, templates(name)')
-          .eq('id', documentId)
-          .single()
-
-        if (!doc) {
-          router.push('/documents')
-          return
-        }
-
-        // 差戻し状態でなければ詳細ページへリダイレクト
-        if (doc.status !== 'returned') {
-          router.push(`/documents/${documentId}`)
-          return
-        }
-
-        setTitle(doc.title ?? '')
-        const tpl = (doc as Record<string, unknown>).templates as { name: string } | null
-        setTemplateName(tpl?.name ?? '')
-
-        // 入力値を取得
-        const { data: docValues } = await supabase
-          .from('document_values')
-          .select('*')
-          .eq('document_id', documentId)
-
-        const restored: Record<string, string> = {}
-        for (const dv of docValues ?? []) {
-          const key = dv.variable_name ?? dv.variable_key
-          restored[key] = dv.value ?? ''
-        }
-        setFormValues(restored)
-        setOriginalValues({ ...restored })
-
-        // テンプレートバージョンを取得
-        if (doc.template_version_id) {
-          const { data: version } = await supabase
-            .from('template_versions')
-            .select('*')
-            .eq('id', doc.template_version_id)
-            .single()
-
-          if (version) {
-            const tv = version as TemplateVersion
-            setTemplateVariables(tv.variables ?? [])
-
-            const bodyData = tv.body as { blocks?: { content: string; order?: number }[] } | null
-            const blocks = bodyData?.blocks ?? []
-            setBodyTemplate(
-              blocks
-                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-                .map((block) => block.content)
-                .join('\n\n')
-            )
-          }
-        }
-
-        // 差戻し理由の取得（最新レコード）
-        const { data: returnRecords } = await supabase
-          .from('approval_records')
-          .select('*, user_profiles!approver_id(display_name, position)')
-          .eq('document_id', documentId)
-          .in('action', ['return', 'reject', 'returned', 'rejected'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-
-        if (returnRecords && returnRecords[0]) {
-          const rec = returnRecords[0]
-          const profile = (rec as Record<string, unknown>).user_profiles as
-            | { display_name: string; position?: string }
-            | null
-          setReturnInfo({
-            returnerName: profile?.display_name ?? rec.approver_id?.slice(0, 8) ?? '承認者',
-            returnerRole: profile?.position ?? '承認者',
-            comment: rec.comment ?? '差戻し理由の記載なし',
-            returnedAt: new Date(rec.acted_at ?? rec.created_at).toLocaleString('ja-JP'),
-          })
-        }
-      } catch (error) {
-        console.error('[Revise] データ読み込みエラー:', error)
-      } finally {
-        setIsLoading(false)
+    setIsLoading(true)
+    try {
+      // 文書本体を取得
+      const doc = getDocument(documentId)
+      if (!doc) {
+        router.push('/documents')
+        return
       }
+
+      // 差戻し状態でなければ詳細ページへリダイレクト
+      if (doc.status !== DOCUMENT_STATUS.RETURNED) {
+        router.push(`/documents/${documentId}`)
+        return
+      }
+
+      setOriginalDoc(doc)
+      setTitle(doc.title)
+      setFormValues({ ...doc.values })
+      setOriginalValues({ ...doc.values })
+
+      // 差戻し理由の取得（最新の rejection レコード）
+      const approvals = getApprovalRecords(documentId)
+      const returnRecord = approvals
+        .filter((a) => a.action === 'returned' || a.action === 'rejected')
+        .sort((a, b) => new Date(b.acted_at).getTime() - new Date(a.acted_at).getTime())[0]
+
+      if (returnRecord) {
+        setReturnInfo({
+          returnerName: returnRecord.approver_name,
+          comment: returnRecord.comment || '差戻し理由の記載なし',
+          returnedAt: new Date(returnRecord.acted_at).toLocaleString('ja-JP'),
+        })
+      }
+    } catch (error) {
+      // エラー時はドキュメント一覧へ遷移
+      router.push('/documents')
+    } finally {
+      setIsLoading(false)
     }
-    loadDocument()
-  }, [documentId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [documentId, router])
 
   // ============================================================
   // フィールド変更・バリデーション
@@ -207,58 +168,30 @@ export default function ReviseDocumentPage() {
   // ============================================================
   // 下書き保存
   // ============================================================
-  const saveDraft = useCallback(async () => {
-    if (isSaving) return
+  const saveDraft = useCallback(() => {
+    if (isSaving || !originalDoc) return
     setIsSaving(true)
     try {
-      // 文書メタデータを更新
-      await supabase
-        .from('documents')
-        .update({
-          title,
-          metadata: { bodyTemplate, formValues },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', documentId)
-
-      // 入力値を upsert
-      for (const [name, value] of Object.entries(formValues)) {
-        await supabase
-          .from('document_values')
-          .upsert(
-            { document_id: documentId, variable_name: name, value, updated_at: new Date().toISOString() },
-            { onConflict: 'document_id,variable_name' }
-          )
-      }
-
-      setLastSavedAt(new Date())
+      // localStorageに文書を保存
+      saveDocument({
+        ...originalDoc,
+        title,
+        values: { ...formValues },
+        updated_at: new Date().toISOString(),
+      })
       setHasUnsavedChanges(false)
     } catch (error) {
-      console.error('[Revise] 保存エラー:', error)
+      // 保存エラー（localStorage容量超過等）
     } finally {
       setIsSaving(false)
     }
-  }, [title, bodyTemplate, formValues, documentId, isSaving, supabase])
-
-  // 自動保存（3分間隔）
-  useEffect(() => {
-    if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current)
-    autoSaveTimerRef.current = setInterval(() => {
-      if (hasUnsavedChanges) saveDraft()
-    }, AUTO_SAVE_INTERVAL)
-    return () => { if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current) }
-  }, [hasUnsavedChanges, saveDraft])
-
-  // デバウンス保存（30秒後）
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    const timer = setTimeout(() => saveDraft(), DEBOUNCE_DELAY)
-    return () => clearTimeout(timer)
-  }, [formValues]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [title, formValues, originalDoc, isSaving])
 
   // ページ離脱警告
   useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => { if (hasUnsavedChanges) e.preventDefault() }
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) e.preventDefault()
+    }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [hasUnsavedChanges])
@@ -266,7 +199,9 @@ export default function ReviseDocumentPage() {
   // ============================================================
   // 再申請処理
   // ============================================================
-  const handleResubmit = useCallback(async () => {
+  const handleResubmit = useCallback(() => {
+    if (!originalDoc) return
+
     // バリデーション
     const missingFields: string[] = []
     if (!title.trim()) missingFields.push('タイトル')
@@ -283,24 +218,38 @@ export default function ReviseDocumentPage() {
 
     setIsSubmitting(true)
     try {
-      // まず保存
-      await saveDraft()
+      // 文書を更新してステータスを承認待ちに変更
+      const updatedDoc: LocalDocument = {
+        ...originalDoc,
+        title,
+        values: { ...formValues },
+        status: DOCUMENT_STATUS.PENDING_APPROVAL,
+        updated_at: new Date().toISOString(),
+      }
+      saveDocument(updatedDoc)
 
-      // ステータスを確認待ちに変更（再申請）
-      await supabase
-        .from('documents')
-        .update({ status: 'pending_confirm', updated_at: new Date().toISOString() })
-        .eq('id', documentId)
+      // 監査ログを記録
+      addAuditLog({
+        user_name: 'デモユーザー',
+        user_role: 'creator',
+        target_type: 'document',
+        target_id: documentId,
+        target_label: title,
+        operation: 'resubmit',
+        before_value: { status: DOCUMENT_STATUS.RETURNED, values: originalValues },
+        after_value: { status: DOCUMENT_STATUS.PENDING_APPROVAL, values: formValues },
+        success: true,
+        comment: `差戻し後の再申請（${changedFields.size}項目変更）`,
+      })
 
       setHasUnsavedChanges(false)
       router.push(`/documents/${documentId}`)
     } catch (error) {
-      console.error('[Revise] 再申請エラー:', error)
       alert('再申請に失敗しました。')
     } finally {
       setIsSubmitting(false)
     }
-  }, [title, templateVariables, formValues, saveDraft, documentId, supabase, router])
+  }, [title, templateVariables, formValues, originalDoc, documentId, originalValues, changedFields.size, router])
 
   // ============================================================
   // ローディング表示
@@ -318,9 +267,7 @@ export default function ReviseDocumentPage() {
   // ============================================================
   return (
     <div className="flex min-h-screen flex-col">
-      {/* ================================================================ */}
       {/* ヘッダー */}
-      {/* ================================================================ */}
       <header className="sticky top-0 z-30 border-b bg-white">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
@@ -334,205 +281,137 @@ export default function ReviseDocumentPage() {
             <div className="h-5 w-px bg-gray-200" />
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold text-gray-900">
-                {templateName || '文書修正'}
+                文書修正（差戻し対応）
               </h1>
               <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
                 修正中
               </span>
             </div>
           </div>
-
-          {/* 自動保存インジケーター */}
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-            {isSaving ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                <span>保存中...</span>
-              </>
-            ) : lastSavedAt ? (
-              <>
-                <Circle className="h-2 w-2 fill-green-500 text-green-500" />
-                <span>
-                  自動保存:{' '}
-                  {lastSavedAt.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </>
-            ) : hasUnsavedChanges ? (
-              <>
-                <Circle className="h-2 w-2 fill-amber-500 text-amber-500" />
-                <span>未保存の変更あり</span>
-              </>
-            ) : null}
-          </div>
         </div>
       </header>
 
-      {/* ================================================================ */}
-      {/* 2カラムレイアウト */}
-      {/* ================================================================ */}
-      <main className="flex-1 overflow-hidden">
-        <div className="grid h-full grid-cols-1 lg:grid-cols-5">
-          {/* 左パネル: フォーム (40%) */}
-          <div className="col-span-1 lg:col-span-2 overflow-y-auto border-r bg-gray-50/50 p-6">
-            <div className="mx-auto max-w-lg space-y-6">
-              {/* 差戻し通知（最上部に表示） */}
-              {returnInfo && (
-                <ReturnNotice
-                  returnerName={returnInfo.returnerName}
-                  returnerRole={returnInfo.returnerRole}
-                  comment={returnInfo.comment}
-                  returnedAt={returnInfo.returnedAt}
-                />
-              )}
-
-              {/* タイトル入力 */}
-              <div className="space-y-1.5">
-                <Label htmlFor="doc-title" className="text-sm font-medium">
-                  文書タイトル <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="doc-title"
-                  value={title}
-                  onChange={(e) => { setTitle(e.target.value); setHasUnsavedChanges(true) }}
-                  onBlur={() => {
-                    if (!title.trim()) setFieldErrors((prev) => ({ ...prev, title: 'タイトルは必須です' }))
-                    else setFieldErrors((prev) => ({ ...prev, title: '' }))
-                  }}
-                  placeholder="文書タイトルを入力"
-                  className={fieldErrors.title ? 'border-red-400' : ''}
-                />
-                {fieldErrors.title && <p className="text-xs text-red-500">{fieldErrors.title}</p>}
-              </div>
-
-              {/* 動的フォームフィールド（変更ハイライト付き） */}
-              {templateVariables.map((variable) => {
-                const isChanged = changedFields.has(variable.name)
-                const value = formValues[variable.name] ?? variable.default_value ?? ''
-
-                return (
-                  <div
-                    key={variable.name}
-                    className={`space-y-1.5 rounded-md p-3 transition-colors ${
-                      isChanged ? 'bg-blue-50 ring-1 ring-blue-200' : ''
-                    }`}
-                  >
-                    {/* ラベル + 変更マーカー */}
-                    <div className="flex items-center gap-2">
-                      {variable.type !== 'boolean' && (
-                        <Label htmlFor={variable.name} className="text-sm">
-                          {variable.label}
-                          {variable.required && <span className="text-red-500 ml-0.5">*</span>}
-                        </Label>
-                      )}
-                      {isChanged && (
-                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                          変更あり
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 入力フィールド */}
-                    {variable.type === 'text' && (
-                      <Input
-                        id={variable.name}
-                        value={value}
-                        onChange={(e) => handleFieldChange(variable.name, e.target.value)}
-                        onBlur={() => validateField(variable, value)}
-                        placeholder={variable.placeholder ?? undefined}
-                        className={fieldErrors[variable.name] ? 'border-red-400' : ''}
-                      />
-                    )}
-                    {variable.type === 'number' && (
-                      <Input
-                        id={variable.name}
-                        type="number"
-                        value={value}
-                        onChange={(e) => handleFieldChange(variable.name, e.target.value)}
-                        onBlur={() => validateField(variable, value)}
-                        className={fieldErrors[variable.name] ? 'border-red-400' : ''}
-                      />
-                    )}
-                    {variable.type === 'date' && (
-                      <Input
-                        id={variable.name}
-                        type="date"
-                        value={value}
-                        onChange={(e) => handleFieldChange(variable.name, e.target.value)}
-                        onBlur={() => validateField(variable, value)}
-                        className={fieldErrors[variable.name] ? 'border-red-400' : ''}
-                      />
-                    )}
-                    {variable.type === 'select' && variable.options && (
-                      <Select value={value} onValueChange={(v) => handleFieldChange(variable.name, v)}>
-                        <SelectTrigger className={fieldErrors[variable.name] ? 'border-red-400' : ''}>
-                          <SelectValue placeholder={variable.placeholder ?? '選択してください'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {variable.options.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {variable.type === 'boolean' && (
-                      <div className="flex items-center gap-2">
-                        <input
-                          id={variable.name}
-                          type="checkbox"
-                          checked={value === 'true'}
-                          onChange={(e) => handleFieldChange(variable.name, String(e.target.checked))}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <Label htmlFor={variable.name} className="text-sm">
-                          {variable.label}
-                          {variable.required && <span className="text-red-500 ml-0.5">*</span>}
-                        </Label>
-                      </div>
-                    )}
-
-                    {/* エラーメッセージ */}
-                    {fieldErrors[variable.name] && (
-                      <p className="text-xs text-red-500">{fieldErrors[variable.name]}</p>
-                    )}
-
-                    {/* 変更前の値（変更されている場合のみ表示） */}
-                    {isChanged && originalValues[variable.name] && (
-                      <p className="text-xs text-gray-400">
-                        変更前: {originalValues[variable.name]}
-                      </p>
-                    )}
+      {/* メインコンテンツ */}
+      <main className="flex-1 overflow-y-auto p-6">
+        <div className="mx-auto max-w-2xl space-y-6">
+          {/* 差戻し通知（赤いボックス） */}
+          {returnInfo && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-red-800">
+                    差戻し通知
+                  </h3>
+                  <p className="text-sm text-red-700">
+                    <span className="font-medium">{returnInfo.returnerName}</span> により差し戻されました
+                    <span className="ml-2 text-xs text-red-500">({returnInfo.returnedAt})</span>
+                  </p>
+                  <div className="mt-2 rounded border border-red-200 bg-white px-3 py-2 text-sm text-red-800">
+                    {returnInfo.comment}
                   </div>
-                )
-              })}
-
-              {templateVariables.length === 0 && (
-                <Card>
-                  <CardContent className="py-8 text-center">
-                    <p className="text-sm text-gray-400">入力項目がありません</p>
-                  </CardContent>
-                </Card>
-              )}
+                </div>
+              </div>
             </div>
+          )}
+
+          {/* タイトル入力 */}
+          <div className="space-y-1.5">
+            <Label htmlFor="doc-title" className="text-sm font-medium">
+              文書タイトル <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="doc-title"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value)
+                setHasUnsavedChanges(true)
+              }}
+              onBlur={() => {
+                if (!title.trim()) setFieldErrors((prev) => ({ ...prev, title: 'タイトルは必須です' }))
+                else setFieldErrors((prev) => ({ ...prev, title: '' }))
+              }}
+              placeholder="文書タイトルを入力"
+              className={fieldErrors.title ? 'border-red-400' : ''}
+            />
+            {fieldErrors.title && <p className="text-xs text-red-500">{fieldErrors.title}</p>}
           </div>
 
-          {/* 右パネル: A4プレビュー (60%) */}
-          <div className="col-span-1 lg:col-span-3 overflow-y-auto bg-gray-100 p-6">
-            <div className="mx-auto max-w-3xl">
-              <A4Preview
-                bodyTemplate={bodyTemplate}
-                values={formValues}
-                title={title}
-                watermark="DRAFT"
-                showZoomControls
-              />
-            </div>
-          </div>
+          {/* 動的フォームフィールド（変更ハイライト付き） */}
+          {templateVariables.map((variable) => {
+            const isChanged = changedFields.has(variable.name)
+            const value = formValues[variable.name] ?? variable.default_value ?? ''
+
+            return (
+              <div
+                key={variable.name}
+                className={`space-y-1.5 rounded-md p-3 transition-colors ${
+                  isChanged ? 'bg-blue-50 ring-1 ring-blue-200' : ''
+                }`}
+              >
+                {/* ラベル + 変更マーカー */}
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={variable.name} className="text-sm">
+                    {variable.label}
+                    {variable.required && <span className="text-red-500 ml-0.5">*</span>}
+                  </Label>
+                  {isChanged && (
+                    <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                      変更あり
+                    </span>
+                  )}
+                </div>
+
+                {/* 入力フィールド */}
+                {variable.type === 'select' && variable.options ? (
+                  <Select value={value} onValueChange={(v) => handleFieldChange(variable.name, v)}>
+                    <SelectTrigger className={fieldErrors[variable.name] ? 'border-red-400' : ''}>
+                      <SelectValue placeholder={variable.placeholder ?? '選択してください'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {variable.options.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id={variable.name}
+                    type={variable.type === 'number' ? 'number' : variable.type === 'date' ? 'date' : 'text'}
+                    value={value}
+                    onChange={(e) => handleFieldChange(variable.name, e.target.value)}
+                    onBlur={() => validateField(variable, value)}
+                    placeholder={variable.placeholder ?? undefined}
+                    className={fieldErrors[variable.name] ? 'border-red-400' : ''}
+                  />
+                )}
+
+                {/* エラーメッセージ */}
+                {fieldErrors[variable.name] && (
+                  <p className="text-xs text-red-500">{fieldErrors[variable.name]}</p>
+                )}
+
+                {/* 変更前の値（変更されている場合のみ表示） */}
+                {isChanged && originalValues[variable.name] && (
+                  <p className="text-xs text-gray-400">
+                    変更前: {originalValues[variable.name]}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+
+          {templateVariables.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <p className="text-sm text-gray-400">入力項目がありません</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
 
-      {/* ================================================================ */}
       {/* フッター（固定） */}
-      {/* ================================================================ */}
       <footer className="sticky bottom-0 z-30 border-t bg-white">
         <div className="flex items-center justify-between px-6 py-3">
           <Link href={`/documents/${documentId}`}>

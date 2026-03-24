@@ -343,6 +343,7 @@ export interface TemplateBlock {
   // 共通
   content?: string
   align?: 'left' | 'center' | 'right'
+  fontFamily?: string
   // 見出し
   level?: 1 | 2 | 3 | 4
   letterSpacing?: number
@@ -1169,4 +1170,198 @@ export function createSeal(partial: Partial<LocalSeal>): LocalSeal {
   }
   saveSeal(seal)
   return seal
+}
+
+// ============================================================
+// 組織ストア
+// ============================================================
+export interface LocalOrganization {
+  id: string
+  name: string
+  address: string
+  phone: string
+  representative: string
+  created_at: string
+}
+
+const INITIAL_ORGANIZATIONS: LocalOrganization[] = [
+  { id: 'org-001', name: '株式会社Backlly', address: '東京都渋谷区...', phone: '03-1234-5678', representative: '代表太郎', created_at: '2026-01-01T00:00:00Z' },
+]
+
+export function getOrganizations(): LocalOrganization[] {
+  const stored = getStorage<LocalOrganization[]>('organizations', [])
+  if (stored.length === 0) {
+    setStorage('organizations', INITIAL_ORGANIZATIONS)
+    return INITIAL_ORGANIZATIONS
+  }
+  return stored
+}
+
+export function saveOrganization(org: LocalOrganization): void {
+  const orgs = getOrganizations()
+  const idx = orgs.findIndex((o) => o.id === org.id)
+  if (idx >= 0) { orgs[idx] = org } else { orgs.push(org) }
+  setStorage('organizations', orgs)
+}
+
+export function deleteOrganization(id: string): void {
+  setStorage('organizations', getOrganizations().filter((o) => o.id !== id))
+}
+
+// ============================================================
+// 従業員ストア
+// ============================================================
+export interface LocalEmployee {
+  id: string
+  name: string
+  email: string
+  department: string
+  position: string
+  role: string
+  joined_at: string
+}
+
+const INITIAL_EMPLOYEES: LocalEmployee[] = [
+  { id: 'emp-001', name: '田中太郎', email: 'tanaka@example.com', department: '営業部', position: '部長', role: 'approver', joined_at: '2020-04-01' },
+  { id: 'emp-002', name: '佐藤花子', email: 'sato@example.com', department: '総務部', position: '課長', role: 'creator', joined_at: '2021-04-01' },
+  { id: 'emp-003', name: '山田一郎', email: 'yamada@example.com', department: '開発部', position: '主任', role: 'viewer', joined_at: '2022-04-01' },
+]
+
+export function getEmployees(): LocalEmployee[] {
+  const stored = getStorage<LocalEmployee[]>('employees', [])
+  if (stored.length === 0) {
+    setStorage('employees', INITIAL_EMPLOYEES)
+    return INITIAL_EMPLOYEES
+  }
+  return stored
+}
+
+export function saveEmployee(emp: LocalEmployee): void {
+  const emps = getEmployees()
+  const idx = emps.findIndex((e) => e.id === emp.id)
+  if (idx >= 0) { emps[idx] = emp } else { emps.push(emp) }
+  setStorage('employees', emps)
+}
+
+export function deleteEmployee(id: string): void {
+  setStorage('employees', getEmployees().filter((e) => e.id !== id))
+}
+
+// ============================================================
+// 取引先ストア
+// ============================================================
+export interface LocalClient {
+  id: string
+  name: string
+  contact_person: string
+  email: string
+  phone: string
+  address: string
+  created_at: string
+}
+
+const INITIAL_CLIENTS: LocalClient[] = [
+  { id: 'cli-001', name: '株式会社ABC', contact_person: '鈴木一郎', email: 'suzuki@abc.co.jp', phone: '03-9999-8888', address: '東京都千代田区...', created_at: '2026-01-15T00:00:00Z' },
+]
+
+export function getClients(): LocalClient[] {
+  const stored = getStorage<LocalClient[]>('clients', [])
+  if (stored.length === 0) {
+    setStorage('clients', INITIAL_CLIENTS)
+    return INITIAL_CLIENTS
+  }
+  return stored
+}
+
+export function saveClient(client: LocalClient): void {
+  const clients = getClients()
+  const idx = clients.findIndex((c) => c.id === client.id)
+  if (idx >= 0) { clients[idx] = client } else { clients.push(client) }
+  setStorage('clients', clients)
+}
+
+export function deleteClient(id: string): void {
+  setStorage('clients', getClients().filter((c) => c.id !== id))
+}
+
+// ============================================================
+// 設定ストア
+// ============================================================
+export interface LocalSettings {
+  companyName: string
+  systemName: string
+  defaultDocumentPrefix: string
+  autoSaveInterval: number
+  pdfWatermarkDraft: string
+  pdfWatermarkConfidential: string
+}
+
+export function getSettings(): LocalSettings {
+  return getStorage<LocalSettings>('settings', {
+    companyName: '株式会社Backlly',
+    systemName: 'B-Doc',
+    defaultDocumentPrefix: 'DOC',
+    autoSaveInterval: 3,
+    pdfWatermarkDraft: '下書き',
+    pdfWatermarkConfidential: '社外秘',
+  })
+}
+
+export function saveSettings(settings: LocalSettings): void {
+  setStorage('settings', settings)
+}
+
+// ============================================================
+// 権限ストア
+// ============================================================
+export interface LocalPermission {
+  userId: string
+  userName: string
+  roles: string[]
+}
+
+export function getPermissions(): LocalPermission[] {
+  return getStorage<LocalPermission[]>('permissions', [
+    { userId: 'emp-001', userName: '田中太郎', roles: ['approver', 'issuer'] },
+    { userId: 'emp-002', userName: '佐藤花子', roles: ['creator'] },
+    { userId: 'emp-003', userName: '山田一郎', roles: ['viewer'] },
+  ])
+}
+
+export function savePermissions(perms: LocalPermission[]): void {
+  setStorage('permissions', perms)
+}
+
+// ============================================================
+// ワークフロー定義ストア
+// ============================================================
+export interface LocalWorkflow {
+  id: string
+  name: string
+  document_type: string
+  steps: { order: number; name: string; type: string; role: string; deadline_hours: number }[]
+  is_active: boolean
+}
+
+export function getWorkflows(): LocalWorkflow[] {
+  return getStorage<LocalWorkflow[]>('workflows', [
+    { id: 'wf-001', name: '標準承認フロー', document_type: 'employment_cert', steps: [
+      { order: 1, name: '確認', type: 'confirm', role: 'confirmer', deadline_hours: 24 },
+      { order: 2, name: '承認', type: 'approve', role: 'approver', deadline_hours: 48 },
+    ], is_active: true },
+    { id: 'wf-002', name: '請求書フロー', document_type: 'invoice', steps: [
+      { order: 1, name: '承認', type: 'approve', role: 'approver', deadline_hours: 72 },
+    ], is_active: true },
+  ])
+}
+
+export function saveWorkflow(wf: LocalWorkflow): void {
+  const wfs = getWorkflows()
+  const idx = wfs.findIndex((w) => w.id === wf.id)
+  if (idx >= 0) { wfs[idx] = wf } else { wfs.push(wf) }
+  setStorage('workflows', wfs)
+}
+
+export function deleteWorkflow(id: string): void {
+  setStorage('workflows', getWorkflows().filter((w) => w.id !== id))
 }
