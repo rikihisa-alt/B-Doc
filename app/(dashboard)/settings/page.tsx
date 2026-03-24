@@ -15,8 +15,12 @@ import {
   Users,
   Bell,
   ChevronRight,
+  ChevronDown,
   Save,
   Check,
+  Landmark,
+  UserCheck,
+  Monitor,
 } from 'lucide-react'
 import Link from 'next/link'
 import { USER_ROLE_LABELS } from '@/types'
@@ -38,6 +42,42 @@ const demoProfile = {
 }
 
 const demoUserId = 'demo-user-001'
+
+/** 折りたたみ可能なセクションカード */
+function CollapsibleSection({
+  title,
+  icon,
+  iconColor,
+  children,
+  defaultOpen = true,
+}: {
+  title: string
+  icon: React.ReactNode
+  iconColor: string
+  children: React.ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <Card>
+      <CardHeader
+        className="cursor-pointer select-none pb-4"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className={iconColor}>{icon}</span>
+            {title}
+          </CardTitle>
+          <ChevronDown
+            className={`h-5 w-5 text-slate-400 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`}
+          />
+        </div>
+      </CardHeader>
+      {open && <CardContent>{children}</CardContent>}
+    </Card>
+  )
+}
 
 export default function SettingsPage() {
   // --- 状態 ---
@@ -71,14 +111,29 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* ページヘッダー */}
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-          <Settings className="h-6 w-6 text-slate-600" />
-          設定
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          アカウントと組織の設定を管理します
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+            <Settings className="h-6 w-6 text-slate-600" />
+            設定
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            アカウントと組織の設定を管理します
+          </p>
+        </div>
+        <Button onClick={handleSave} size="lg">
+          {saved ? (
+            <>
+              <Check className="mr-1.5 h-4 w-4" />
+              保存しました
+            </>
+          ) : (
+            <>
+              <Save className="mr-1.5 h-4 w-4" />
+              設定を保存
+            </>
+          )}
+        </Button>
       </div>
 
       {/* ユーザープロフィールセクション */}
@@ -139,86 +194,294 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* システム設定（編集可能） */}
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Building2 className="h-5 w-5 text-purple-600" />
-              システム設定
-            </CardTitle>
-            <Button size="sm" onClick={handleSave}>
-              {saved ? (
-                <>
-                  <Check className="mr-1.5 h-4 w-4" />
-                  保存しました
-                </>
-              ) : (
-                <>
-                  <Save className="mr-1.5 h-4 w-4" />
-                  設定を保存
-                </>
-              )}
-            </Button>
+      {/* セクション1: 会社基本情報 */}
+      <CollapsibleSection
+        title="会社基本情報"
+        icon={<Building2 className="h-5 w-5" />}
+        iconColor="text-purple-600"
+        defaultOpen={true}
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="s-company">会社名</Label>
+            <Input
+              id="s-company"
+              value={settings.companyName}
+              onChange={(e) => updateField('companyName', e.target.value)}
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="s-company">会社名</Label>
-              <Input
-                id="s-company"
-                value={settings.companyName}
-                onChange={(e) => updateField('companyName', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-system">システム名</Label>
-              <Input
-                id="s-system"
-                value={settings.systemName}
-                onChange={(e) => updateField('systemName', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-prefix">文書番号プレフィックス</Label>
-              <Input
-                id="s-prefix"
-                value={settings.defaultDocumentPrefix}
-                onChange={(e) => updateField('defaultDocumentPrefix', e.target.value)}
-              />
-              <p className="text-xs text-slate-400">例: DOC, INV, EMP</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-interval">自動保存間隔（分）</Label>
-              <Input
-                id="s-interval"
-                type="number"
-                min={1}
-                max={60}
-                value={settings.autoSaveInterval}
-                onChange={(e) => updateField('autoSaveInterval', Number(e.target.value))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-watermark-draft">下書き透かし文字</Label>
-              <Input
-                id="s-watermark-draft"
-                value={settings.pdfWatermarkDraft}
-                onChange={(e) => updateField('pdfWatermarkDraft', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-watermark-conf">社外秘透かし文字</Label>
-              <Input
-                id="s-watermark-conf"
-                value={settings.pdfWatermarkConfidential}
-                onChange={(e) => updateField('pdfWatermarkConfidential', e.target.value)}
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-company-kana">会社名フリガナ</Label>
+            <Input
+              id="s-company-kana"
+              value={settings.companyNameKana}
+              onChange={(e) => updateField('companyNameKana', e.target.value)}
+              placeholder="カブシキガイシャ..."
+            />
           </div>
-        </CardContent>
-      </Card>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="s-company-en">英語名</Label>
+            <Input
+              id="s-company-en"
+              value={settings.companyNameEn}
+              onChange={(e) => updateField('companyNameEn', e.target.value)}
+              placeholder="Company Name Inc."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-postal">郵便番号</Label>
+            <Input
+              id="s-postal"
+              value={settings.companyPostalCode}
+              onChange={(e) => updateField('companyPostalCode', e.target.value)}
+              placeholder="000-0000"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-address">住所</Label>
+            <Input
+              id="s-address"
+              value={settings.companyAddress}
+              onChange={(e) => updateField('companyAddress', e.target.value)}
+              placeholder="東京都○○区..."
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="s-building">建物名・階</Label>
+            <Input
+              id="s-building"
+              value={settings.companyAddressBuilding}
+              onChange={(e) => updateField('companyAddressBuilding', e.target.value)}
+              placeholder="○○ビル 3F"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-phone">電話番号</Label>
+            <Input
+              id="s-phone"
+              value={settings.companyPhone}
+              onChange={(e) => updateField('companyPhone', e.target.value)}
+              placeholder="03-0000-0000"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-fax">FAX番号</Label>
+            <Input
+              id="s-fax"
+              value={settings.companyFax}
+              onChange={(e) => updateField('companyFax', e.target.value)}
+              placeholder="03-0000-0001"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-email">メールアドレス</Label>
+            <Input
+              id="s-email"
+              type="email"
+              value={settings.companyEmail}
+              onChange={(e) => updateField('companyEmail', e.target.value)}
+              placeholder="info@example.com"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-website">Webサイト</Label>
+            <Input
+              id="s-website"
+              value={settings.companyWebsite}
+              onChange={(e) => updateField('companyWebsite', e.target.value)}
+              placeholder="https://example.com"
+            />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* セクション2: 代表者・法人情報 */}
+      <CollapsibleSection
+        title="代表者・法人情報"
+        icon={<UserCheck className="h-5 w-5" />}
+        iconColor="text-green-600"
+        defaultOpen={false}
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="s-rep-name">代表者名</Label>
+            <Input
+              id="s-rep-name"
+              value={settings.companyRepresentativeName}
+              onChange={(e) => updateField('companyRepresentativeName', e.target.value)}
+              placeholder="山田 太郎"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-rep-title">代表者役職</Label>
+            <Input
+              id="s-rep-title"
+              value={settings.companyRepresentativeTitle}
+              onChange={(e) => updateField('companyRepresentativeTitle', e.target.value)}
+              placeholder="代表取締役"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="s-reg-number">法人番号（インボイス登録番号）</Label>
+            <Input
+              id="s-reg-number"
+              value={settings.companyRegistrationNumber}
+              onChange={(e) => updateField('companyRegistrationNumber', e.target.value)}
+              placeholder="T1234567890123"
+            />
+            <p className="text-xs text-slate-400">適格請求書発行事業者の登録番号（T+13桁）</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-established">設立日</Label>
+            <Input
+              id="s-established"
+              type="date"
+              value={settings.companyEstablishedDate}
+              onChange={(e) => updateField('companyEstablishedDate', e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-capital">資本金</Label>
+            <Input
+              id="s-capital"
+              value={settings.companyCapital}
+              onChange={(e) => updateField('companyCapital', e.target.value)}
+              placeholder="10,000,000円"
+            />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* セクション3: 振込先情報 */}
+      <CollapsibleSection
+        title="振込先情報"
+        icon={<Landmark className="h-5 w-5" />}
+        iconColor="text-orange-600"
+        defaultOpen={false}
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="s-bank">銀行名</Label>
+            <Input
+              id="s-bank"
+              value={settings.companyBankName}
+              onChange={(e) => updateField('companyBankName', e.target.value)}
+              placeholder="みずほ銀行"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-branch">支店名</Label>
+            <Input
+              id="s-branch"
+              value={settings.companyBankBranch}
+              onChange={(e) => updateField('companyBankBranch', e.target.value)}
+              placeholder="本店営業部"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-acct-type">口座種別</Label>
+            <select
+              id="s-acct-type"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={settings.companyBankAccountType}
+              onChange={(e) => updateField('companyBankAccountType', e.target.value)}
+            >
+              <option value="普通">普通</option>
+              <option value="当座">当座</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-acct-number">口座番号</Label>
+            <Input
+              id="s-acct-number"
+              value={settings.companyBankAccountNumber}
+              onChange={(e) => updateField('companyBankAccountNumber', e.target.value)}
+              placeholder="1234567"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="s-acct-name">口座名義</Label>
+            <Input
+              id="s-acct-name"
+              value={settings.companyBankAccountName}
+              onChange={(e) => updateField('companyBankAccountName', e.target.value)}
+              placeholder="カ）バックリー"
+            />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* セクション4: システム設定 */}
+      <CollapsibleSection
+        title="システム設定"
+        icon={<Monitor className="h-5 w-5" />}
+        iconColor="text-blue-600"
+        defaultOpen={false}
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="s-system">システム名</Label>
+            <Input
+              id="s-system"
+              value={settings.systemName}
+              onChange={(e) => updateField('systemName', e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-prefix">文書番号プレフィックス</Label>
+            <Input
+              id="s-prefix"
+              value={settings.defaultDocumentPrefix}
+              onChange={(e) => updateField('defaultDocumentPrefix', e.target.value)}
+            />
+            <p className="text-xs text-slate-400">例: DOC, INV, EMP</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-interval">自動保存間隔（分）</Label>
+            <Input
+              id="s-interval"
+              type="number"
+              min={1}
+              max={60}
+              value={settings.autoSaveInterval}
+              onChange={(e) => updateField('autoSaveInterval', Number(e.target.value))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-watermark-draft">下書き透かし文字</Label>
+            <Input
+              id="s-watermark-draft"
+              value={settings.pdfWatermarkDraft}
+              onChange={(e) => updateField('pdfWatermarkDraft', e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-watermark-conf">社外秘透かし文字</Label>
+            <Input
+              id="s-watermark-conf"
+              value={settings.pdfWatermarkConfidential}
+              onChange={(e) => updateField('pdfWatermarkConfidential', e.target.value)}
+            />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* フッター保存ボタン */}
+      <div className="flex justify-end pb-8">
+        <Button onClick={handleSave} size="lg">
+          {saved ? (
+            <>
+              <Check className="mr-1.5 h-4 w-4" />
+              保存しました
+            </>
+          ) : (
+            <>
+              <Save className="mr-1.5 h-4 w-4" />
+              設定を保存
+            </>
+          )}
+        </Button>
+      </div>
 
       {/* クイックリンク */}
       <div>

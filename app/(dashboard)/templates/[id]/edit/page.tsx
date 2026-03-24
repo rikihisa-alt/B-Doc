@@ -74,11 +74,23 @@ const FONT_OPTIONS: FontOption[] = [
   { value: 'M PLUS 1p', label: 'Mプラス', css: "'M PLUS 1p', sans-serif" },
   { value: 'Kosugi Maru', label: '小杉丸ゴシック', css: "'Kosugi Maru', sans-serif" },
   { value: 'Zen Maru Gothic', label: 'ゼンマルゴシック', css: "'Zen Maru Gothic', sans-serif" },
+  { value: 'Zen Kaku Gothic New', label: 'ゼン角ゴシック', css: "'Zen Kaku Gothic New', sans-serif" },
+  { value: 'Shippori Mincho', label: 'しっぽり明朝', css: "'Shippori Mincho', serif" },
+  { value: 'Shippori Mincho B1', label: 'しっぽり明朝B1', css: "'Shippori Mincho B1', serif" },
+  { value: 'Klee One', label: 'クレー', css: "'Klee One', cursive" },
+  { value: 'Hina Mincho', label: 'ひな明朝', css: "'Hina Mincho', serif" },
+  { value: 'Dela Gothic One', label: 'デラゴシック', css: "'Dela Gothic One', cursive" },
+  { value: 'RocknRoll One', label: 'ロックンロール', css: "'RocknRoll One', sans-serif" },
+  { value: 'Reggae One', label: 'レゲエ', css: "'Reggae One', cursive" },
+  { value: 'DotGothic16', label: 'ドットゴシック', css: "'DotGothic16', sans-serif" },
+  { value: 'Kaisei Decol', label: '解星デコール', css: "'Kaisei Decol', serif" },
+  { value: 'Kaisei Tokumin', label: '解星特ミン', css: "'Kaisei Tokumin', serif" },
+  { value: 'Zen Old Mincho', label: 'ゼン旧明朝', css: "'Zen Old Mincho', serif" },
   { value: 'monospace', label: '等幅', css: "'Courier New', monospace" },
 ]
 
 /** Google Fonts のインポート URL */
-const GOOGLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Sawarabi+Mincho&family=M+PLUS+1p:wght@400;700&family=Kosugi+Maru&family=Zen+Maru+Gothic:wght@400;700&display=swap'
+const GOOGLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Sawarabi+Mincho&family=M+PLUS+1p:wght@400;700&family=Kosugi+Maru&family=Zen+Maru+Gothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@400;700&family=Shippori+Mincho:wght@400;700&family=Shippori+Mincho+B1:wght@400;700&family=Klee+One:wght@400;700&family=Hina+Mincho&family=Dela+Gothic+One&family=RocknRoll+One&family=Reggae+One&family=DotGothic16&family=Kaisei+Decol:wght@400;700&family=Kaisei+Tokumin:wght@400;700&family=Zen+Old+Mincho:wght@400;700&display=swap'
 
 /** フォントファミリー値からCSS値を取得 */
 function getFontCss(fontFamily: string | undefined): string {
@@ -204,22 +216,53 @@ function FontFamilySelect({ value, onChange }: { value: string | undefined; onCh
   )
 }
 
-/** フォントサイズ入力（8-72pt） */
+/** フォントサイズプリセット値 */
+const FONT_SIZE_PRESETS = [6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96, 120]
+
+/** フォントサイズ入力（ドロップダウン + カスタム入力のコンボボックス） */
 function FontSizeInput({ value, onChange }: { value: number | undefined; onChange: (v: number) => void }) {
+  const [isCustom, setIsCustom] = useState(false)
+  const currentVal = value ?? 12
+  const isPreset = FONT_SIZE_PRESETS.includes(currentVal)
+
   return (
-    <input
-      type="number"
-      min={8}
-      max={72}
-      step={1}
-      value={value ?? 12}
-      onChange={(e) => {
-        const n = Number(e.target.value)
-        if (n >= 8 && n <= 72) onChange(n)
-      }}
-      className="w-14 rounded border border-slate-300 px-1.5 py-1 text-center text-xs"
-      title="フォントサイズ (pt)"
-    />
+    <div className="flex items-center gap-0.5">
+      {/* プリセットドロップダウン */}
+      <select
+        className="w-16 rounded-l border border-slate-300 px-1 py-1 text-xs"
+        value={isPreset && !isCustom ? String(currentVal) : '__custom__'}
+        onChange={(e) => {
+          if (e.target.value === '__custom__') {
+            setIsCustom(true)
+          } else {
+            setIsCustom(false)
+            onChange(Number(e.target.value))
+          }
+        }}
+        title="フォントサイズ (pt)"
+      >
+        {FONT_SIZE_PRESETS.map((s) => (
+          <option key={s} value={String(s)}>{s}pt</option>
+        ))}
+        <option value="__custom__">カスタム...</option>
+      </select>
+      {/* カスタム値入力（プリセット外の値またはカスタムモード時に表示） */}
+      {(isCustom || !isPreset) && (
+        <input
+          type="number"
+          min={1}
+          max={200}
+          step={0.5}
+          value={currentVal}
+          onChange={(e) => {
+            const n = Number(e.target.value)
+            if (n >= 1 && n <= 200) onChange(n)
+          }}
+          className="w-14 rounded-r border border-l-0 border-slate-300 px-1 py-1 text-center text-xs"
+          title="カスタムフォントサイズ (pt)"
+        />
+      )}
+    </div>
   )
 }
 
@@ -385,6 +428,104 @@ function ParagraphBlockEditor({ block, onChange }: BlockEditorProps) {
   )
 }
 
+// 会社情報変数の候補定義（カテゴリ付き）
+interface CompanyVarSuggestion {
+  key: string
+  label: string
+  category: string
+}
+
+const COMPANY_VAR_SUGGESTIONS: CompanyVarSuggestion[] = [
+  // 会社情報
+  { key: 'company_name', label: '会社名', category: '会社情報' },
+  { key: 'company_name_kana', label: '会社名フリガナ', category: '会社情報' },
+  { key: 'company_name_en', label: '英語名', category: '会社情報' },
+  { key: 'company_postal_code', label: '郵便番号', category: '会社情報' },
+  { key: 'company_address', label: '住所', category: '会社情報' },
+  { key: 'company_address_building', label: '建物名', category: '会社情報' },
+  { key: 'company_phone', label: '電話番号', category: '会社情報' },
+  { key: 'company_fax', label: 'FAX番号', category: '会社情報' },
+  { key: 'company_email', label: 'メールアドレス', category: '会社情報' },
+  { key: 'company_website', label: 'Webサイト', category: '会社情報' },
+  { key: 'company_representative_name', label: '代表者名', category: '代表者・法人' },
+  { key: 'company_representative_title', label: '代表者役職', category: '代表者・法人' },
+  { key: 'company_registration_number', label: '法人番号', category: '代表者・法人' },
+  { key: 'company_established_date', label: '設立日', category: '代表者・法人' },
+  { key: 'company_capital', label: '資本金', category: '代表者・法人' },
+  // 振込先
+  { key: 'company_bank_name', label: '銀行名', category: '振込先' },
+  { key: 'company_bank_branch', label: '支店名', category: '振込先' },
+  { key: 'company_bank_account_type', label: '口座種別', category: '振込先' },
+  { key: 'company_bank_account_number', label: '口座番号', category: '振込先' },
+  { key: 'company_bank_account_name', label: '口座名義', category: '振込先' },
+]
+
+/** 変数キーのサジェストドロップダウン */
+function VariableKeySuggestions({
+  currentKey,
+  onSelect,
+}: {
+  currentKey: string
+  onSelect: (key: string, label: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  // 入力値でフィルタリング
+  const filtered = currentKey
+    ? COMPANY_VAR_SUGGESTIONS.filter(
+        (s) => s.key.includes(currentKey) || s.label.includes(currentKey)
+      )
+    : COMPANY_VAR_SUGGESTIONS
+
+  // カテゴリごとにグループ化
+  const grouped = filtered.reduce<Record<string, CompanyVarSuggestion[]>>((acc, s) => {
+    if (!acc[s.category]) acc[s.category] = []
+    acc[s.category].push(s)
+    return acc
+  }, {})
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="mt-1 w-full rounded border border-dashed border-blue-300 bg-blue-50 px-2 py-1 text-left text-xs text-blue-600 hover:bg-blue-100"
+      >
+        {open ? '候補を閉じる' : '会社情報変数から選択...'}
+      </button>
+      {open && (
+        <div className="absolute left-0 z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+          {Object.entries(grouped).map(([category, items]) => (
+            <div key={category}>
+              <div className="sticky top-0 bg-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                {category}
+              </div>
+              {items.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-blue-50"
+                  onClick={() => {
+                    onSelect(s.key, s.label)
+                    setOpen(false)
+                  }}
+                >
+                  <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-600">
+                    {s.key}
+                  </code>
+                  <span className="text-slate-700">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="px-3 py-2 text-xs text-slate-400">一致する候補がありません</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 変数行ブロックエディタ */
 function VariableLineBlockEditor({ block, onChange }: BlockEditorProps) {
   const addOption = () => {
@@ -402,6 +543,11 @@ function VariableLineBlockEditor({ block, onChange }: BlockEditorProps) {
       opts[idx].value = val
     }
     onChange({ ...block, variableOptions: opts })
+  }
+
+  // サジェスト選択ハンドラ: キーとラベルを同時にセット
+  const handleSuggestionSelect = (key: string, label: string) => {
+    onChange({ ...block, variableKey: key, variableLabel: label })
   }
 
   return (
@@ -424,6 +570,11 @@ function VariableLineBlockEditor({ block, onChange }: BlockEditorProps) {
             onChange={(e) => onChange({ ...block, variableKey: e.target.value })}
             placeholder="employee_name"
             className="mt-1 font-mono text-sm"
+          />
+          {/* 会社情報変数の候補ドロップダウン */}
+          <VariableKeySuggestions
+            currentKey={block.variableKey ?? ''}
+            onSelect={handleSuggestionSelect}
           />
         </div>
       </div>

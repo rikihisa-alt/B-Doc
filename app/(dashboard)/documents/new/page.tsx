@@ -25,8 +25,9 @@ import {
   createDocument,
   saveDocument,
   addAuditLog,
+  getSettings,
 } from '@/lib/store'
-import type { LocalTemplate, TemplateBlock, LocalSeal } from '@/lib/store'
+import type { LocalTemplate, TemplateBlock, LocalSeal, LocalSettings } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft,
@@ -35,12 +36,49 @@ import {
 } from 'lucide-react'
 
 // =============================================================================
+// 会社情報変数マッピング
+// =============================================================================
+
+/** 会社情報の予約変数キーと設定フィールドのマッピング */
+const COMPANY_VAR_MAP: Record<string, keyof LocalSettings> = {
+  'company_name': 'companyName',
+  'company_name_kana': 'companyNameKana',
+  'company_name_en': 'companyNameEn',
+  'company_postal_code': 'companyPostalCode',
+  'company_address': 'companyAddress',
+  'company_address_building': 'companyAddressBuilding',
+  'company_phone': 'companyPhone',
+  'company_fax': 'companyFax',
+  'company_email': 'companyEmail',
+  'company_website': 'companyWebsite',
+  'company_representative_name': 'companyRepresentativeName',
+  'company_representative_title': 'companyRepresentativeTitle',
+  'company_registration_number': 'companyRegistrationNumber',
+  'company_established_date': 'companyEstablishedDate',
+  'company_capital': 'companyCapital',
+  'company_bank_name': 'companyBankName',
+  'company_bank_branch': 'companyBankBranch',
+  'company_bank_account_type': 'companyBankAccountType',
+  'company_bank_account_number': 'companyBankAccountNumber',
+  'company_bank_account_name': 'companyBankAccountName',
+}
+
+// =============================================================================
 // 変数置換ヘルパー
 // =============================================================================
 
-/** 文字列中の {{key}} を formValues で置換する */
-function replaceVars(text: string, values: Record<string, string>): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => values[key] ?? '')
+/** 文字列中の {{key}} を formValues で置換し、未定義の会社変数は設定から補完する */
+function replaceVars(text: string, values: Record<string, string>, companySettings?: LocalSettings): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    // まず formValues から取得
+    if (values[key] !== undefined && values[key] !== '') return values[key]
+    // フォールバック: 会社情報設定から補完
+    if (companySettings && key in COMPANY_VAR_MAP) {
+      const settingKey = COMPANY_VAR_MAP[key]
+      return String(companySettings[settingKey] ?? '')
+    }
+    return ''
+  })
 }
 
 // =============================================================================
@@ -90,8 +128,8 @@ function SealPreview({ seal }: { seal: LocalSeal }) {
 // A4 ブロックレンダラー
 // =============================================================================
 
-function BlockRenderer({ block, values }: { block: TemplateBlock; values: Record<string, string> }) {
-  const content = block.content ? replaceVars(block.content, values) : ''
+function BlockRenderer({ block, values, companySettings }: { block: TemplateBlock; values: Record<string, string>; companySettings?: LocalSettings }) {
+  const content = block.content ? replaceVars(block.content, values, companySettings) : ''
   const alignClass = block.align === 'center' ? 'text-center' : block.align === 'right' ? 'text-right' : 'text-left'
 
   switch (block.type) {
@@ -143,7 +181,7 @@ function BlockRenderer({ block, values }: { block: TemplateBlock; values: Record
               <tr className="bg-gray-100">
                 {block.tableHeaders.map((h, i) => (
                   <th key={i} className="border border-gray-400 px-2 py-1 font-medium">
-                    {replaceVars(h, values)}
+                    {replaceVars(h, values, companySettings)}
                   </th>
                 ))}
               </tr>
@@ -154,7 +192,7 @@ function BlockRenderer({ block, values }: { block: TemplateBlock; values: Record
               <tr key={ri}>
                 {row.map((cell, ci) => (
                   <td key={ci} className="border border-gray-400 px-2 py-1">
-                    {replaceVars(cell, values)}
+                    {replaceVars(cell, values, companySettings)}
                   </td>
                 ))}
               </tr>
@@ -226,9 +264,9 @@ function BlockRenderer({ block, values }: { block: TemplateBlock; values: Record
     }
 
     case 'address_block': {
-      const company = block.addressCompany ? replaceVars(block.addressCompany, values) : ''
-      const dept = block.addressDepartment ? replaceVars(block.addressDepartment, values) : ''
-      const name = block.addressName ? replaceVars(block.addressName, values) : ''
+      const company = block.addressCompany ? replaceVars(block.addressCompany, values, companySettings) : ''
+      const dept = block.addressDepartment ? replaceVars(block.addressDepartment, values, companySettings) : ''
+      const name = block.addressName ? replaceVars(block.addressName, values, companySettings) : ''
       const suffix = block.addressSuffix ?? ''
       return (
         <div className="my-2 text-sm">
@@ -271,16 +309,38 @@ export default function NewDocumentPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   // 読み込み中
   const [loading, setLoading] = useState(true)
+  // 会社設定（自動入力用）
+  const [companySettings, setCompanySettings] = useState<LocalSettings | null>(null)
+  // 自動入力されたキーのセット
+  const [autoFilledKeys, setAutoFilledKeys] = useState<Set<string>>(new Set())
 
-  // テンプレートの読み込み
+  // テンプレートの読み込みと会社情報の自動入力
   useEffect(() => {
     if (!templateId) {
       setLoading(false)
       return
     }
     const tpl = getTemplate(templateId)
+    const settings = getSettings()
+    setCompanySettings(settings)
+
     if (tpl) {
       setTemplate(tpl)
+      // 会社情報からの自動入力
+      const initialValues: Record<string, string> = {}
+      const autoKeys = new Set<string>()
+      for (const v of tpl.variables) {
+        if (v.key in COMPANY_VAR_MAP) {
+          const settingKey = COMPANY_VAR_MAP[v.key]
+          const settingValue = String(settings[settingKey] ?? '')
+          if (settingValue) {
+            initialValues[v.key] = settingValue
+            autoKeys.add(v.key)
+          }
+        }
+      }
+      setFormValues(initialValues)
+      setAutoFilledKeys(autoKeys)
     }
     setLoading(false)
   }, [templateId])
@@ -485,12 +545,18 @@ ${previewEl.innerHTML}
               const value = formValues[v.key] ?? ''
               const error = fieldErrors[v.key]
               const errorClass = error ? 'border-red-400 focus-visible:ring-red-400' : ''
+              const isAutoFilled = autoFilledKeys.has(v.key)
 
               return (
                 <div key={v.key} className="space-y-1.5">
                   <Label htmlFor={v.key} className="flex items-center gap-1 text-sm">
                     {v.label}
                     {v.required && <span className="text-red-500">*</span>}
+                    {isAutoFilled && (
+                      <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+                        会社情報から自動入力
+                      </span>
+                    )}
                   </Label>
 
                   {/* テキスト入力 */}
@@ -603,13 +669,13 @@ ${previewEl.innerHTML}
               }}
             >
               {sortedBlocks.map((block) => (
-                <BlockRenderer key={block.id} block={block} values={formValues} />
+                <BlockRenderer key={block.id} block={block} values={formValues} companySettings={companySettings ?? undefined} />
               ))}
 
               {/* ブロックがない場合、body_template からフォールバック表示 */}
               {sortedBlocks.length === 0 && template.body_template && (
                 <div className="whitespace-pre-wrap text-sm">
-                  {replaceVars(template.body_template, formValues)}
+                  {replaceVars(template.body_template, formValues, companySettings ?? undefined)}
                 </div>
               )}
             </div>

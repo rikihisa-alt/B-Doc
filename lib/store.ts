@@ -1288,12 +1288,33 @@ export function deleteClient(id: string): void {
 // 設定ストア
 // ============================================================
 export interface LocalSettings {
+  // 既存
   companyName: string
   systemName: string
   defaultDocumentPrefix: string
   autoSaveInterval: number
   pdfWatermarkDraft: string
   pdfWatermarkConfidential: string
+  // 会社情報
+  companyNameKana: string          // 会社名フリガナ
+  companyNameEn: string            // 英語名
+  companyPostalCode: string        // 郵便番号
+  companyAddress: string           // 住所
+  companyAddressBuilding: string   // 建物名・階
+  companyPhone: string             // 電話番号
+  companyFax: string               // FAX番号
+  companyEmail: string             // メールアドレス
+  companyWebsite: string           // Webサイト
+  companyRepresentativeName: string // 代表者名
+  companyRepresentativeTitle: string // 代表者役職（代表取締役 etc）
+  companyRegistrationNumber: string // 法人番号（インボイス番号）
+  companyEstablishedDate: string   // 設立日
+  companyCapital: string           // 資本金
+  companyBankName: string          // 振込先銀行
+  companyBankBranch: string        // 支店名
+  companyBankAccountType: string   // 口座種別（普通・当座）
+  companyBankAccountNumber: string // 口座番号
+  companyBankAccountName: string   // 口座名義
 }
 
 export function getSettings(): LocalSettings {
@@ -1304,6 +1325,25 @@ export function getSettings(): LocalSettings {
     autoSaveInterval: 3,
     pdfWatermarkDraft: '下書き',
     pdfWatermarkConfidential: '社外秘',
+    companyNameKana: '',
+    companyNameEn: '',
+    companyPostalCode: '',
+    companyAddress: '',
+    companyAddressBuilding: '',
+    companyPhone: '',
+    companyFax: '',
+    companyEmail: '',
+    companyWebsite: '',
+    companyRepresentativeName: '',
+    companyRepresentativeTitle: '',
+    companyRegistrationNumber: '',
+    companyEstablishedDate: '',
+    companyCapital: '',
+    companyBankName: '',
+    companyBankBranch: '',
+    companyBankAccountType: '普通',
+    companyBankAccountNumber: '',
+    companyBankAccountName: '',
   })
 }
 
