@@ -389,6 +389,9 @@ export interface TemplateBlock {
 // テンプレートストア
 // ============================================================
 
+/** テンプレート承認ステータスの型 */
+export type TemplateApprovalStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected'
+
 export interface LocalTemplate {
   id: string
   name: string
@@ -400,6 +403,18 @@ export interface LocalTemplate {
   body_template: string
   blocks?: TemplateBlock[]
   created_at: string
+  /** テンプレート承認ステータス */
+  status?: TemplateApprovalStatus
+  /** 承認申請者名 */
+  submitted_by?: string
+  /** 承認申請日時 */
+  submitted_at?: string
+  /** 承認者名 */
+  approved_by?: string
+  /** 承認日時 */
+  approved_at?: string
+  /** 差戻し理由 */
+  rejection_reason?: string
 }
 
 const INITIAL_TEMPLATES: LocalTemplate[] = [
@@ -1404,4 +1419,53 @@ export function saveWorkflow(wf: LocalWorkflow): void {
 
 export function deleteWorkflow(id: string): void {
   setStorage('workflows', getWorkflows().filter((w) => w.id !== id))
+}
+
+// ============================================================
+// ユーザーセッション管理
+// ============================================================
+
+/** ユーザーロール種別 */
+export type UserRoleType = 'staff' | 'manager' | 'admin'
+
+/** 現在のユーザー情報 */
+export interface CurrentUser {
+  id: string
+  name: string
+  department: string
+  position: string
+  role: UserRoleType
+}
+
+/** ロール種別の日本語ラベルマップ */
+export const USER_ROLE_TYPE_LABELS: Record<UserRoleType, string> = {
+  staff: '一般社員',
+  manager: '管理職',
+  admin: '管理者',
+}
+
+/** 現在のユーザーを取得 */
+export function getCurrentUser(): CurrentUser {
+  return getStorage<CurrentUser>('current_user', {
+    id: 'user-001',
+    name: 'デモユーザー',
+    department: '総務部',
+    position: '一般社員',
+    role: 'staff',
+  })
+}
+
+/** 現在のユーザーを設定 */
+export function setCurrentUser(user: CurrentUser): void {
+  setStorage('current_user', user)
+}
+
+/** テンプレート承認権限チェック */
+export function canApproveTemplates(role: UserRoleType): boolean {
+  return role === 'manager' || role === 'admin'
+}
+
+/** 設定管理権限チェック */
+export function canManageSettings(role: UserRoleType): boolean {
+  return role === 'admin'
 }

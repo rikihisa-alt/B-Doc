@@ -25,9 +25,16 @@ import {
   Lock,
   GitBranch,
   FilePlus,
+  UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { USER_ROLE_LABELS } from '@/types'
+import {
+  getCurrentUser,
+  setCurrentUser,
+  addAuditLog,
+  USER_ROLE_TYPE_LABELS,
+} from '@/lib/store'
+import type { CurrentUser, UserRoleType } from '@/lib/store'
 import type { LucideIcon } from 'lucide-react'
 
 // =============================================================================
@@ -60,11 +67,12 @@ interface TopNavItem {
   badgeCount?: number
 }
 
+/** プロパティ（オプショナル化：内部でストアから読み取る） */
 interface TopNavbarProps {
-  /** ユーザー表示名 */
-  userName: string
-  /** ユーザーのプライマリロール */
-  userRole: string
+  /** ユーザー表示名（省略時はストアから取得） */
+  userName?: string
+  /** ユーザーのプライマリロール（省略時はストアから取得） */
+  userRole?: string
 }
 
 // =============================================================================
@@ -152,6 +160,13 @@ const NAV_ITEMS_MAP: Record<string, TopNavItem> = {
       { icon: GitBranch, label: '承認フロー', href: '/settings/workflows' },
     ],
   },
+}
+
+/** ロール別に表示するナビゲーション項目 */
+const NAV_ITEMS_BY_ROLE: Record<UserRoleType, string[]> = {
+  staff: ['dashboard', 'documents', 'templates'],
+  manager: ['dashboard', 'documents', 'approvals', 'templates'],
+  admin: ['dashboard', 'documents', 'approvals', 'templates', 'master', 'audit', 'settings'],
 }
 
 /** localStorageキー */
@@ -347,19 +362,41 @@ function NavItemButton({
 }
 
 // =============================================================================
+// ロールバッジの色マップ
+// =============================================================================
+
+const ROLE_BADGE_COLORS: Record<UserRoleType, string> = {
+  staff: 'bg-slate-100 text-slate-600',
+  manager: 'bg-amber-100 text-amber-700',
+  admin: 'bg-red-100 text-red-700',
+}
+
+// =============================================================================
 // メインコンポーネント: TopNavbar
 // =============================================================================
 
 /**
  * トップナビゲーションバー
  * - ロゴ表示（左端固定）
- * - ナビゲーション項目（ドラッグ&ドロップで並び替え可能）
+ * - ナビゲーション項目（ドラッグ&ドロップで並び替え可能、ロール別表示）
  * - ホバーでドロップダウンメニュー表示
- * - 通知ベル + ユーザーメニュー（右端固定）
+ * - 通知ベル + ユーザーメニュー + ロール切替（右端固定）
  */
-export function TopNavbar({ userName, userRole }: TopNavbarProps) {
+export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavbarProps) {
   const pathname = usePathname()
   const router = useRouter()
+
+  // 現在のユーザー情報をストアから読み取る
+  const [currentUser, setCurrentUserState] = useState<CurrentUser | null>(null)
+
+  useEffect(() => {
+    setCurrentUserState(getCurrentUser())
+  }, [])
+
+  // 表示用の値（ストア優先、propsはフォールバック）
+  const displayName = currentUser?.name ?? _userName ?? 'デモユーザー'
+  const displayRole = currentUser?.role ?? 'staff'
+  const roleLabel = USER_ROLE_TYPE_LABELS[displayRole] ?? displayRole
 
   // ナビゲーション項目の順序管理
   const [navOrder, setNavOrder] = useState<string[]>(DEFAULT_NAV_ORDER)
@@ -371,9 +408,8 @@ export function TopNavbar({ userName, userRole }: TopNavbarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
-  // ロールの日本語ラベル
-  const roleLabel =
-    USER_ROLE_LABELS[userRole as keyof typeof USER_ROLE_LABELS] ?? userRole
+  // ロール別に表示するナビ項目を決定
+  const allowedNavIds = NAV_ITEMS_BY_ROLE[displayRole] ?? NAV_ITEMS_BY_ROLE.staff
 
   // 初期マウント時にlocalStorageから順序を読み込む
   useEffect(() => {
@@ -392,6 +428,48 @@ export function TopNavbar({ userName, userRole }: TopNavbarProps) {
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // =========================================================================
+  // ロール切替ハンドラ
+  // =========================================================================
+
+  /** ロールを切り替える */
+  const handleRoleChange = useCallback((newRole: UserRoleType) => {
+    const user = getCurrentUser()
+    const oldRole = user.role
+
+    // ロール別のデフォルト情報
+    const roleDefaults: Record<UserRoleType, { position: string }> = {
+      staff: { position: '一般社員' },
+      manager: { position: '部長' },
+      admin: { position: 'システム管理者' },
+    }
+
+    const updatedUser: CurrentUser = {
+      ...user,
+      role: newRole,
+      position: roleDefaults[newRole].position,
+    }
+
+    setCurrentUser(updatedUser)
+
+    // 監査ログ記録
+    addAuditLog({
+      user_name: user.name,
+      user_role: newRole,
+      target_type: 'user',
+      target_id: user.id,
+      target_label: user.name,
+      operation: 'role_change',
+      before_value: { role: oldRole },
+      after_value: { role: newRole },
+      success: true,
+      comment: `ロール切替: ${USER_ROLE_TYPE_LABELS[oldRole]} → ${USER_ROLE_TYPE_LABELS[newRole]}`,
+    })
+
+    // ページをリロードして反映
+    window.location.reload()
   }, [])
 
   // =========================================================================
@@ -498,25 +576,27 @@ export function TopNavbar({ userName, userRole }: TopNavbarProps) {
         />
       </Link>
 
-      {/* ナビゲーション項目（ドラッグ可能、水平スクロール対応） */}
+      {/* ナビゲーション項目（ドラッグ可能、水平スクロール対応、ロール別フィルタ） */}
       <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
-        {navOrder.map((id) => {
-          const item = NAV_ITEMS_MAP[id]
-          if (!item) return null
-          return (
-            <NavItemButton
-              key={item.id}
-              item={item}
-              isActive={isItemActive(item)}
-              isDragging={dragItemId === item.id}
-              isDropTarget={dropTargetId === item.id}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              onDragEnd={handleDragEnd}
-            />
-          )
-        })}
+        {navOrder
+          .filter((id) => allowedNavIds.includes(id))
+          .map((id) => {
+            const item = NAV_ITEMS_MAP[id]
+            if (!item) return null
+            return (
+              <NavItemButton
+                key={item.id}
+                item={item}
+                isActive={isItemActive(item)}
+                isDragging={dragItemId === item.id}
+                isDropTarget={dropTargetId === item.id}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                onDragEnd={handleDragEnd}
+              />
+            )
+          })}
       </nav>
 
       {/* 右側: 通知ベル + ユーザーメニュー（固定、ドラッグ不可） */}
@@ -542,12 +622,15 @@ export function TopNavbar({ userName, userRole }: TopNavbarProps) {
           >
             {/* ユーザーアバター */}
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
-              {userName.charAt(0)}
+              {displayName.charAt(0)}
             </div>
             <span className="text-slate-700 font-medium text-sm">
-              {userName}
+              {displayName}
             </span>
-            <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+            <span className={cn(
+              'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium',
+              ROLE_BADGE_COLORS[displayRole]
+            )}>
               {roleLabel}
             </span>
             <ChevronDown
@@ -560,13 +643,48 @@ export function TopNavbar({ userName, userRole }: TopNavbarProps) {
 
           {/* ユーザードロップダウンメニュー */}
           {userMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 top-full z-50 mt-1 w-60 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+              {/* ユーザー情報 */}
               <div className="border-b border-slate-100 px-4 py-3">
                 <p className="text-sm font-medium text-slate-700 truncate">
-                  {userName}
+                  {displayName}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">{roleLabel}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {currentUser?.department ?? '総務部'} / {roleLabel}
+                </p>
               </div>
+
+              {/* ロール切替セクション */}
+              <div className="border-b border-slate-100 px-4 py-3">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <UserCog className="h-3.5 w-3.5" />
+                  ロール切替
+                </p>
+                <div className="flex flex-col gap-1">
+                  {(Object.entries(USER_ROLE_TYPE_LABELS) as [UserRoleType, string][]).map(([role, label]) => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => handleRoleChange(role)}
+                      className={cn(
+                        'flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
+                        displayRole === role
+                          ? 'bg-blue-50 text-blue-700 font-medium'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      )}
+                    >
+                      <span>{label}</span>
+                      {displayRole === role && (
+                        <span className="text-[10px] rounded bg-blue-100 px-1.5 py-0.5 text-blue-600">
+                          現在
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ログアウト */}
               <button
                 type="button"
                 onClick={handleLogout}

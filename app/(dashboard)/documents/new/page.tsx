@@ -26,6 +26,7 @@ import {
   saveDocument,
   addAuditLog,
   getSettings,
+  getCurrentUser,
 } from '@/lib/store'
 import type { LocalTemplate, TemplateBlock, LocalSeal, LocalSettings } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -314,6 +315,11 @@ export default function NewDocumentPage() {
   // 自動入力されたキーのセット
   const [autoFilledKeys, setAutoFilledKeys] = useState<Set<string>>(new Set())
 
+  // PDF出力情報フィールド
+  const [docTitle, setDocTitle] = useState('')
+  const [creatorName, setCreatorName] = useState('')
+  const [creationDate, setCreationDate] = useState('')
+
   // テンプレートの読み込みと会社情報の自動入力
   useEffect(() => {
     if (!templateId) {
@@ -322,10 +328,17 @@ export default function NewDocumentPage() {
     }
     const tpl = getTemplate(templateId)
     const settings = getSettings()
+    const currentUser = getCurrentUser()
     setCompanySettings(settings)
 
     if (tpl) {
       setTemplate(tpl)
+
+      // PDF出力情報の初期値を設定
+      setDocTitle(tpl.name)
+      setCreatorName(currentUser.name)
+      setCreationDate(new Date().toISOString().split('T')[0])
+
       // 会社情報からの自動入力
       const initialValues: Record<string, string> = {}
       const autoKeys = new Set<string>()
@@ -386,17 +399,46 @@ export default function NewDocumentPage() {
   // PDF 生成＆ダウンロード
   const handleGeneratePdf = useCallback(async () => {
     if (!template) return
+
+    // PDF出力情報のバリデーション
+    if (!docTitle.trim()) {
+      alert('書類名を入力してください。')
+      return
+    }
+    if (!creatorName.trim()) {
+      alert('作成者名を入力してください。')
+      return
+    }
+
     if (!validateAll()) return
 
     setIsGenerating(true)
     try {
+      const currentUser = getCurrentUser()
+      const finalTitle = docTitle.trim() || template.name
+
       // localStorage に文書を保存
       const doc = createDocument({
-        title: `${template.name}`,
+        title: finalTitle,
         template_id: template.id,
         document_type: template.document_type,
         values: formValues,
         body_template: template.body_template,
+        created_by: creatorName.trim(),
+      })
+
+      // 文書作成の監査ログ
+      addAuditLog({
+        user_name: currentUser.name,
+        user_role: currentUser.role,
+        target_type: 'document',
+        target_id: doc.id,
+        target_label: finalTitle,
+        operation: 'document_create',
+        before_value: null,
+        after_value: { status: 'draft', title: finalTitle, creator: creatorName.trim() },
+        success: true,
+        comment: '文書新規作成',
       })
 
       // 発行済みにする
@@ -404,21 +446,21 @@ export default function NewDocumentPage() {
         ...doc,
         status: 'issued',
         issued_at: new Date().toISOString(),
-        issued_by: 'デモユーザー',
+        issued_by: creatorName.trim(),
       })
 
-      // 監査ログ
+      // PDF生成の監査ログ
       addAuditLog({
-        user_name: 'デモユーザー',
-        user_role: 'creator',
+        user_name: currentUser.name,
+        user_role: currentUser.role,
         target_type: 'document',
         target_id: doc.id,
-        target_label: doc.title,
-        operation: 'issue',
-        before_value: null,
+        target_label: finalTitle,
+        operation: 'document_pdf_generate',
+        before_value: { status: 'draft' },
         after_value: { status: 'issued' },
         success: true,
-        comment: 'PDF生成・ダウンロード',
+        comment: `PDF生成・ダウンロード（作成者: ${creatorName.trim()}, 作成日: ${creationDate}）`,
       })
 
       // プレビュー領域の内容をコピーして印刷用ウィンドウを開く
@@ -435,7 +477,7 @@ export default function NewDocumentPage() {
 <html>
 <head>
 <meta charset="utf-8" />
-<title>${template.name}</title>
+<title>${finalTitle}</title>
 <style>
   @page { size: A4; margin: 20mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -485,7 +527,7 @@ ${previewEl.innerHTML}
     } finally {
       setIsGenerating(false)
     }
-  }, [template, formValues, validateAll])
+  }, [template, formValues, validateAll, docTitle, creatorName, creationDate])
 
   // ローディング表示
   if (loading) {
@@ -533,6 +575,56 @@ ${previewEl.innerHTML}
         {/* 左パネル: 入力フォーム (40%) */}
         <div className="w-2/5 overflow-y-auto border-r bg-gray-50/50 p-6">
           <div className="mx-auto max-w-md space-y-5">
+            {/* PDF出力情報セクション */}
+            <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-4 space-y-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-blue-800">
+                <FileDown className="h-4 w-4" />
+                PDF出力情報
+              </h2>
+
+              {/* 書類名 */}
+              <div className="space-y-1.5">
+                <Label htmlFor="doc-title" className="text-sm text-blue-700">
+                  書類名 <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="doc-title"
+                  value={docTitle}
+                  onChange={(e) => setDocTitle(e.target.value)}
+                  placeholder="書類名を入力"
+                  className="border-blue-200 bg-white focus-visible:ring-blue-400"
+                />
+              </div>
+
+              {/* 作成者名 */}
+              <div className="space-y-1.5">
+                <Label htmlFor="creator-name" className="text-sm text-blue-700">
+                  作成者名 <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="creator-name"
+                  value={creatorName}
+                  onChange={(e) => setCreatorName(e.target.value)}
+                  placeholder="作成者名を入力"
+                  className="border-blue-200 bg-white focus-visible:ring-blue-400"
+                />
+              </div>
+
+              {/* 作成日 */}
+              <div className="space-y-1.5">
+                <Label htmlFor="creation-date" className="text-sm text-blue-700">
+                  作成日
+                </Label>
+                <Input
+                  id="creation-date"
+                  type="date"
+                  value={creationDate}
+                  onChange={(e) => setCreationDate(e.target.value)}
+                  className="border-blue-200 bg-white focus-visible:ring-blue-400"
+                />
+              </div>
+            </div>
+
             <h2 className="text-sm font-semibold text-gray-700">入力項目</h2>
 
             {template.variables.length === 0 && (

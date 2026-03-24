@@ -15,6 +15,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import {
   getTemplates,
   saveTemplate,
+  addAuditLog,
+  getCurrentUser,
 } from '@/lib/store'
 import type {
   LocalTemplate,
@@ -233,6 +235,7 @@ export default function NewTemplatePage() {
           { id: `blk-${Date.now()}-1`, type: 'spacer', order: 1, spacerHeight: 10 },
           { id: `blk-${Date.now()}-2`, type: 'paragraph', order: 2, content: '（ここに内容を記載してください）', align: 'left', fontSize: 12 },
         ]
+        const currentUser = getCurrentUser()
         const template: LocalTemplate = {
           id,
           name,
@@ -244,8 +247,25 @@ export default function NewTemplatePage() {
           body_template: '',
           blocks: blankBlocks,
           created_at: new Date().toISOString(),
+          status: 'draft',
+          submitted_by: currentUser.name,
         }
         saveTemplate(template)
+
+        // 監査ログ: テンプレート作成
+        addAuditLog({
+          user_name: currentUser.name,
+          user_role: currentUser.role,
+          target_type: 'template',
+          target_id: id,
+          target_label: name,
+          operation: 'template_create',
+          before_value: null,
+          after_value: { name, document_type: 'other', status: 'draft' },
+          success: true,
+          comment: 'テンプレート新規作成（白紙）',
+        })
+
         router.push(`/templates/${id}/edit`)
         return
       }
@@ -275,6 +295,7 @@ export default function NewTemplatePage() {
         }
       }
 
+      const currentUserForBase = getCurrentUser()
       const template: LocalTemplate = {
         id,
         name,
@@ -286,8 +307,25 @@ export default function NewTemplatePage() {
         body_template: '',
         blocks,
         created_at: new Date().toISOString(),
+        status: 'draft',
+        submitted_by: currentUserForBase.name,
       }
       saveTemplate(template)
+
+      // 監査ログ: テンプレート作成
+      addAuditLog({
+        user_name: currentUserForBase.name,
+        user_role: currentUserForBase.role,
+        target_type: 'template',
+        target_id: id,
+        target_label: name,
+        operation: 'template_create',
+        before_value: null,
+        after_value: { name, document_type: selectedTemplate.document_type, status: 'draft', base_template: selectedTemplate.name },
+        success: true,
+        comment: `テンプレート新規作成（ベース: ${selectedTemplate.name}）`,
+      })
+
       router.push(`/templates/${id}/edit`)
     } finally {
       setCreating(false)
