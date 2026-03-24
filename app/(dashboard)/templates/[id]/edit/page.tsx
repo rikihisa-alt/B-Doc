@@ -6,7 +6,7 @@
  * 3パネル構成: ブロックパレット | メイン編集エリア | A4プレビュー
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,8 @@ import {
   GripVertical,
   X,
   ChevronLeft,
+  ChevronDown,
+  ChevronRight,
   Save,
   Plus,
   ArrowUp,
@@ -54,6 +56,16 @@ import {
   AlignCenter,
   AlignRight,
   FileText,
+  List,
+  Columns,
+  LayoutGrid,
+  Indent,
+  Outdent,
+  Palette,
+  Undo2,
+  Redo2,
+  Keyboard,
+  Trash2,
 } from 'lucide-react'
 
 // ============================================================
@@ -103,7 +115,7 @@ function getFontCss(fontFamily: string | undefined): string {
 const LINE_HEIGHT_OPTIONS = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
 
 // ============================================================
-// ブロック種別の定義情報
+// ブロック種別の定義情報（カテゴリ付き）
 // ============================================================
 
 interface BlockTypeInfo {
@@ -111,24 +123,35 @@ interface BlockTypeInfo {
   label: string
   icon: React.ReactNode
   description: string
+  category: string
 }
 
-/** ブロックパレット用の定義 */
+/** ブロックパレット用の定義（カテゴリ分類） */
 const BLOCK_TYPES: BlockTypeInfo[] = [
-  { type: 'heading', label: '見出し', icon: <Heading1 className="h-4 w-4" />, description: 'H1-H4、文字間隔調整' },
-  { type: 'paragraph', label: '本文', icon: <Type className="h-4 w-4" />, description: 'リッチテキスト' },
-  { type: 'variable_line', label: '変数行', icon: <Variable className="h-4 w-4" />, description: 'ラベル: {{変数}}' },
-  { type: 'table', label: '表', icon: <Table className="h-4 w-4" />, description: '行×列の表' },
-  { type: 'seal', label: '印影', icon: <Stamp className="h-4 w-4" />, description: '印影を配置' },
-  { type: 'signature', label: '署名欄', icon: <PenLine className="h-4 w-4" />, description: '会社名・代表者' },
-  { type: 'divider', label: '区切線', icon: <Minus className="h-4 w-4" />, description: '線のスタイル' },
-  { type: 'spacer', label: '余白', icon: <Space className="h-4 w-4" />, description: '高さ(mm)指定' },
-  { type: 'page_break', label: '改ページ', icon: <Scissors className="h-4 w-4" />, description: 'ページ区切り' },
-  { type: 'notice', label: '注意書き', icon: <AlertTriangle className="h-4 w-4" />, description: '枠付きテキスト' },
-  { type: 'image', label: '画像', icon: <Image className="h-4 w-4" />, description: 'プレースホルダー' },
-  { type: 'date_line', label: '日付行', icon: <Calendar className="h-4 w-4" />, description: '右寄せ日付' },
-  { type: 'address_block', label: '宛名', icon: <Building2 className="h-4 w-4" />, description: '宛名ブロック' },
+  // テキスト
+  { type: 'heading', label: '見出し', icon: <Heading1 className="h-4 w-4" />, description: 'H1-H4、文字間隔調整', category: 'テキスト' },
+  { type: 'paragraph', label: '本文', icon: <Type className="h-4 w-4" />, description: 'リッチテキスト', category: 'テキスト' },
+  { type: 'list', label: 'リスト', icon: <List className="h-4 w-4" />, description: '箇条書き・番号付き', category: 'テキスト' },
+  { type: 'notice', label: '注意書き', icon: <AlertTriangle className="h-4 w-4" />, description: '枠付きテキスト', category: 'テキスト' },
+  // レイアウト
+  { type: 'two_column', label: '2カラム', icon: <Columns className="h-4 w-4" />, description: '左右分割レイアウト', category: 'レイアウト' },
+  { type: 'horizontal_items', label: '横並び項目', icon: <LayoutGrid className="h-4 w-4" />, description: 'キー:値ペア', category: 'レイアウト' },
+  { type: 'divider', label: '区切線', icon: <Minus className="h-4 w-4" />, description: '線のスタイル', category: 'レイアウト' },
+  { type: 'spacer', label: '余白', icon: <Space className="h-4 w-4" />, description: '高さ(mm)指定', category: 'レイアウト' },
+  { type: 'page_break', label: '改ページ', icon: <Scissors className="h-4 w-4" />, description: 'ページ区切り', category: 'レイアウト' },
+  // データ
+  { type: 'variable_line', label: '変数行', icon: <Variable className="h-4 w-4" />, description: 'ラベル: {{変数}}', category: 'データ' },
+  { type: 'table', label: '表', icon: <Table className="h-4 w-4" />, description: '行×列の表', category: 'データ' },
+  { type: 'date_line', label: '日付行', icon: <Calendar className="h-4 w-4" />, description: '右寄せ日付', category: 'データ' },
+  { type: 'address_block', label: '宛名', icon: <Building2 className="h-4 w-4" />, description: '宛名ブロック', category: 'データ' },
+  // 署名・印
+  { type: 'signature', label: '署名欄', icon: <PenLine className="h-4 w-4" />, description: '会社名・代表者', category: '署名・印' },
+  { type: 'seal', label: '印影', icon: <Stamp className="h-4 w-4" />, description: '印影を配置', category: '署名・印' },
+  { type: 'image', label: '画像', icon: <Image className="h-4 w-4" />, description: 'プレースホルダー', category: '署名・印' },
 ]
+
+/** カテゴリ一覧（順序保持） */
+const BLOCK_CATEGORIES = ['テキスト', 'レイアウト', 'データ', '署名・印']
 
 // ============================================================
 // ユーティリティ
@@ -169,6 +192,12 @@ function createDefaultBlock(type: TemplateBlockType, order: number): TemplateBlo
       return { ...base, content: '令和○年○月○日', align: 'right' }
     case 'address_block':
       return { ...base, addressCompany: '', addressDepartment: '', addressName: '', addressSuffix: '御中' }
+    case 'list':
+      return { ...base, listType: 'bullet', listItems: ['項目1', '項目2', '項目3'] }
+    case 'two_column':
+      return { ...base, columnRatio: '50-50', columnLeftContent: '', columnRightContent: '' }
+    case 'horizontal_items':
+      return { ...base, horizontalItems: [{ label: '項目名', value: '{{value}}' }] }
     default:
       return base
   }
@@ -304,6 +333,113 @@ function LetterSpacingInput({ value, onChange }: { value: number | undefined; on
   )
 }
 
+/** カラーピッカー（コンパクト） */
+function ColorPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[10px] text-slate-500">{label}</span>
+      <div className="relative">
+        <input type="color" value={value || '#000000'} onChange={e => onChange(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-6 h-6" />
+        <div className="w-5 h-5 rounded border border-slate-300" style={{ backgroundColor: value || '#000000' }} />
+      </div>
+    </div>
+  )
+}
+
+/** インデント制御ボタン */
+function IndentControl({ indent, onChange }: { indent: number | undefined; onChange: (v: number) => void }) {
+  const current = indent ?? 0
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onChange(Math.max(0, current - 10))}
+        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"
+        title="インデント減"
+        disabled={current <= 0}
+      >
+        <Outdent className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => onChange(Math.min(80, current + 10))}
+        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        title="インデント増"
+      >
+        <Indent className="h-3.5 w-3.5" />
+      </button>
+      {current > 0 && <span className="text-[10px] text-slate-400">{current}mm</span>}
+    </div>
+  )
+}
+
+/** 詳細設定パネル（パディング・ボーダー） */
+function DetailSettings({ block, onChange }: { block: TemplateBlock; onChange: (updated: TemplateBlock) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        詳細設定
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50/50 p-2">
+          {/* パディング */}
+          <div>
+            <span className="text-[10px] font-medium text-slate-500">余白 (mm)</span>
+            <div className="mt-1 flex items-center gap-2">
+              {(['paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight'] as const).map((key) => (
+                <div key={key} className="flex items-center gap-0.5">
+                  <span className="text-[9px] text-slate-400">
+                    {key === 'paddingTop' ? '上' : key === 'paddingBottom' ? '下' : key === 'paddingLeft' ? '左' : '右'}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={block[key] ?? 0}
+                    onChange={(e) => onChange({ ...block, [key]: Number(e.target.value) })}
+                    className="w-10 rounded border border-slate-300 px-1 py-0.5 text-center text-[10px]"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* ボーダー */}
+          <div>
+            <span className="text-[10px] font-medium text-slate-500">枠線</span>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="flex items-center gap-0.5">
+                <span className="text-[9px] text-slate-400">太さ</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={5}
+                  value={block.borderWidth ?? 0}
+                  onChange={(e) => onChange({ ...block, borderWidth: Number(e.target.value) })}
+                  className="w-10 rounded border border-slate-300 px-1 py-0.5 text-center text-[10px]"
+                />
+              </div>
+              <select
+                value={block.borderStyle ?? 'none'}
+                onChange={(e) => onChange({ ...block, borderStyle: e.target.value as TemplateBlock['borderStyle'] })}
+                className="rounded border border-slate-300 px-1 py-0.5 text-[10px]"
+              >
+                <option value="none">なし</option>
+                <option value="solid">実線</option>
+                <option value="dashed">破線</option>
+                <option value="dotted">点線</option>
+              </select>
+              <ColorPicker label="色" value={block.borderColor ?? '#000000'} onChange={(v) => onChange({ ...block, borderColor: v })} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** テキストブロック共通のフォントスタイルツールバー */
 function FontStyleToolbar({
   block,
@@ -330,6 +466,16 @@ function FontStyleToolbar({
       {showLetterSpacing && (
         <LetterSpacingInput value={block.letterSpacing} onChange={(letterSpacing) => onChange({ ...block, letterSpacing })} />
       )}
+    </div>
+  )
+}
+
+/** テキスト色・背景色ツールバー（色対応ブロック用） */
+function ColorToolbar({ block, onChange }: { block: TemplateBlock; onChange: (updated: TemplateBlock) => void }) {
+  return (
+    <div className="flex items-center gap-3">
+      <ColorPicker label="文字色" value={block.color ?? '#000000'} onChange={(v) => onChange({ ...block, color: v })} />
+      <ColorPicker label="背景色" value={block.backgroundColor ?? '#ffffff'} onChange={(v) => onChange({ ...block, backgroundColor: v })} />
     </div>
   )
 }
@@ -369,12 +515,14 @@ function HeadingBlockEditor({ block, onChange }: BlockEditorProps) {
         showLineHeight={false}
         showFontSize={false}
       />
+      {/* 色ツールバー */}
+      <ColorToolbar block={block} onChange={onChange} />
       <Input
         value={block.content ?? ''}
         onChange={(e) => onChange({ ...block, content: e.target.value })}
         placeholder="見出しテキストを入力"
         className="text-lg font-bold"
-        style={{ fontFamily: getFontCss(block.fontFamily) }}
+        style={{ fontFamily: getFontCss(block.fontFamily), color: block.color }}
       />
     </div>
   )
@@ -408,9 +556,13 @@ function ParagraphBlockEditor({ block, onChange }: BlockEditorProps) {
         </button>
         <div className="mx-1 h-5 w-px bg-slate-300" />
         <AlignButtons align={block.align ?? 'left'} onChange={(align) => onChange({ ...block, align })} />
+        <div className="mx-1 h-5 w-px bg-slate-300" />
+        <IndentControl indent={block.indent} onChange={(indent) => onChange({ ...block, indent })} />
       </div>
       {/* フォント・サイズ・行間ツールバー */}
       <FontStyleToolbar block={block} onChange={onChange} showLineHeight showFontSize />
+      {/* 色ツールバー */}
+      <ColorToolbar block={block} onChange={onChange} />
       <textarea
         value={block.content ?? ''}
         onChange={(e) => onChange({ ...block, content: e.target.value })}
@@ -422,8 +574,12 @@ function ParagraphBlockEditor({ block, onChange }: BlockEditorProps) {
           fontWeight: block.bold ? 'bold' : 'normal',
           fontStyle: block.italic ? 'italic' : 'normal',
           textDecoration: block.underline ? 'underline' : 'none',
+          color: block.color,
+          backgroundColor: block.backgroundColor && block.backgroundColor !== '#ffffff' ? block.backgroundColor : undefined,
         }}
       />
+      {/* 詳細設定（パディング・ボーダー） */}
+      <DetailSettings block={block} onChange={onChange} />
     </div>
   )
 }
@@ -436,7 +592,6 @@ interface CompanyVarSuggestion {
 }
 
 const COMPANY_VAR_SUGGESTIONS: CompanyVarSuggestion[] = [
-  // 会社情報
   { key: 'company_name', label: '会社名', category: '会社情報' },
   { key: 'company_name_kana', label: '会社名フリガナ', category: '会社情報' },
   { key: 'company_name_en', label: '英語名', category: '会社情報' },
@@ -452,7 +607,6 @@ const COMPANY_VAR_SUGGESTIONS: CompanyVarSuggestion[] = [
   { key: 'company_registration_number', label: '法人番号', category: '代表者・法人' },
   { key: 'company_established_date', label: '設立日', category: '代表者・法人' },
   { key: 'company_capital', label: '資本金', category: '代表者・法人' },
-  // 振込先
   { key: 'company_bank_name', label: '銀行名', category: '振込先' },
   { key: 'company_bank_branch', label: '支店名', category: '振込先' },
   { key: 'company_bank_account_type', label: '口座種別', category: '振込先' },
@@ -469,14 +623,12 @@ function VariableKeySuggestions({
   onSelect: (key: string, label: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  // 入力値でフィルタリング
   const filtered = currentKey
     ? COMPANY_VAR_SUGGESTIONS.filter(
         (s) => s.key.includes(currentKey) || s.label.includes(currentKey)
       )
     : COMPANY_VAR_SUGGESTIONS
 
-  // カテゴリごとにグループ化
   const grouped = filtered.reduce<Record<string, CompanyVarSuggestion[]>>((acc, s) => {
     if (!acc[s.category]) acc[s.category] = []
     acc[s.category].push(s)
@@ -545,7 +697,6 @@ function VariableLineBlockEditor({ block, onChange }: BlockEditorProps) {
     onChange({ ...block, variableOptions: opts })
   }
 
-  // サジェスト選択ハンドラ: キーとラベルを同時にセット
   const handleSuggestionSelect = (key: string, label: string) => {
     onChange({ ...block, variableKey: key, variableLabel: label })
   }
@@ -553,6 +704,7 @@ function VariableLineBlockEditor({ block, onChange }: BlockEditorProps) {
   return (
     <div className="space-y-3">
       <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight={false} />
+      <ColorToolbar block={block} onChange={onChange} />
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label className="text-xs text-slate-500">ラベル</Label>
@@ -571,7 +723,6 @@ function VariableLineBlockEditor({ block, onChange }: BlockEditorProps) {
             placeholder="employee_name"
             className="mt-1 font-mono text-sm"
           />
-          {/* 会社情報変数の候補ドロップダウン */}
           <VariableKeySuggestions
             currentKey={block.variableKey ?? ''}
             onSelect={handleSuggestionSelect}
@@ -721,6 +872,8 @@ function TableBlockEditor({ block, onChange }: BlockEditorProps) {
         </table>
       </div>
       <p className="text-xs text-slate-400">{'セルに {{変数名}} を記入すると変数として扱われます'}</p>
+      {/* 詳細設定（パディング・ボーダー） */}
+      <DetailSettings block={block} onChange={onChange} />
     </div>
   )
 }
@@ -842,16 +995,17 @@ function NoticeBlockEditor({ block, onChange }: BlockEditorProps) {
           <option value="warning">警告</option>
         </select>
       </div>
-      {/* フォント・サイズツールバー */}
       <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight />
+      <ColorToolbar block={block} onChange={onChange} />
       <textarea
         value={block.content ?? ''}
         onChange={(e) => onChange({ ...block, content: e.target.value })}
         placeholder="注意書きテキスト..."
         rows={2}
         className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-        style={{ fontFamily: getFontCss(block.fontFamily) }}
+        style={{ fontFamily: getFontCss(block.fontFamily), color: block.color }}
       />
+      <DetailSettings block={block} onChange={onChange} />
     </div>
   )
 }
@@ -927,6 +1081,196 @@ function PageBreakBlockEditor() {
   )
 }
 
+/** リストブロックエディタ */
+function ListBlockEditor({ block, onChange }: BlockEditorProps) {
+  const items = block.listItems ?? []
+  const listType = block.listType ?? 'bullet'
+
+  const addItem = () => {
+    onChange({ ...block, listItems: [...items, ''] })
+  }
+
+  const removeItem = (idx: number) => {
+    onChange({ ...block, listItems: items.filter((_, i) => i !== idx) })
+  }
+
+  const updateItem = (idx: number, val: string) => {
+    const newItems = [...items]
+    newItems[idx] = val
+    onChange({ ...block, listItems: newItems })
+  }
+
+  const moveItem = (idx: number, dir: 'up' | 'down') => {
+    const newItems = [...items]
+    const swapIdx = dir === 'up' ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= newItems.length) return
+    const temp = newItems[idx]
+    newItems[idx] = newItems[swapIdx]
+    newItems[swapIdx] = temp
+    onChange({ ...block, listItems: newItems })
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* リスト種別トグル */}
+      <div className="flex items-center gap-2">
+        <div className="inline-flex rounded border border-slate-300">
+          <button
+            className={`px-3 py-1.5 text-xs ${listType === 'bullet' ? 'bg-slate-200 font-medium' : 'hover:bg-slate-50'}`}
+            onClick={() => onChange({ ...block, listType: 'bullet' })}
+          >
+            ● 箇条書き
+          </button>
+          <button
+            className={`px-3 py-1.5 text-xs ${listType === 'numbered' ? 'bg-slate-200 font-medium' : 'hover:bg-slate-50'}`}
+            onClick={() => onChange({ ...block, listType: 'numbered' })}
+          >
+            1. 番号付き
+          </button>
+        </div>
+        <IndentControl indent={block.indent} onChange={(indent) => onChange({ ...block, indent })} />
+      </div>
+      <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight={false} />
+      <ColorToolbar block={block} onChange={onChange} />
+      {/* リスト項目一覧 */}
+      <div className="space-y-1">
+        {items.map((item, idx) => (
+          <div key={idx} className="flex items-center gap-1">
+            {/* リスト番号・マーカー表示 */}
+            <span className="w-5 text-right text-xs text-slate-400">
+              {listType === 'bullet' ? '●' : `${idx + 1}.`}
+            </span>
+            <Input
+              value={item}
+              onChange={(e) => updateItem(idx, e.target.value)}
+              placeholder="項目テキスト..."
+              className="flex-1 h-8 text-sm"
+            />
+            <button onClick={() => moveItem(idx, 'up')} className="rounded p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-30" disabled={idx === 0}>
+              <ArrowUp className="h-3 w-3" />
+            </button>
+            <button onClick={() => moveItem(idx, 'down')} className="rounded p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-30" disabled={idx === items.length - 1}>
+              <ArrowDown className="h-3 w-3" />
+            </button>
+            <button onClick={() => removeItem(idx)} className="rounded p-0.5 text-slate-400 hover:text-red-500">
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <Button variant="outline" size="sm" onClick={addItem} className="text-xs">
+        <Plus className="mr-1 h-3 w-3" /> 項目追加
+      </Button>
+    </div>
+  )
+}
+
+/** 2カラムブロックエディタ */
+function TwoColumnBlockEditor({ block, onChange }: BlockEditorProps) {
+  const ratioOptions = ['50-50', '60-40', '40-60', '70-30', '30-70'] as const
+  const ratioLabels: Record<string, string> = {
+    '50-50': '50/50',
+    '60-40': '60/40',
+    '40-60': '40/60',
+    '70-30': '70/30',
+    '30-70': '30/70',
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* カラム比率選択 */}
+      <div className="flex items-center gap-2">
+        <Label className="text-xs text-slate-500">比率</Label>
+        <div className="inline-flex rounded border border-slate-300">
+          {ratioOptions.map((r) => (
+            <button
+              key={r}
+              className={`px-2 py-1 text-[10px] ${(block.columnRatio ?? '50-50') === r ? 'bg-slate-200 font-medium' : 'hover:bg-slate-50'}`}
+              onClick={() => onChange({ ...block, columnRatio: r })}
+            >
+              {ratioLabels[r]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* 左右カラム */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-xs text-slate-500">左カラム</Label>
+          <textarea
+            value={block.columnLeftContent ?? ''}
+            onChange={(e) => onChange({ ...block, columnLeftContent: e.target.value })}
+            placeholder="左カラムの内容..."
+            rows={3}
+            className="mt-1 w-full resize-y rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-slate-500">右カラム</Label>
+          <textarea
+            value={block.columnRightContent ?? ''}
+            onChange={(e) => onChange({ ...block, columnRightContent: e.target.value })}
+            placeholder="右カラムの内容..."
+            rows={3}
+            className="mt-1 w-full resize-y rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 横並び項目ブロックエディタ */
+function HorizontalItemsBlockEditor({ block, onChange }: BlockEditorProps) {
+  const items = block.horizontalItems ?? []
+
+  const addItem = () => {
+    onChange({ ...block, horizontalItems: [...items, { label: '', value: '' }] })
+  }
+
+  const removeItem = (idx: number) => {
+    onChange({ ...block, horizontalItems: items.filter((_, i) => i !== idx) })
+  }
+
+  const updateItem = (idx: number, field: 'label' | 'value', val: string) => {
+    const newItems = [...items]
+    newItems[idx] = { ...newItems[idx], [field]: val }
+    onChange({ ...block, horizontalItems: newItems })
+  }
+
+  return (
+    <div className="space-y-3">
+      <FontStyleToolbar block={block} onChange={onChange} showFontSize showLineHeight={false} />
+      <div className="space-y-1.5">
+        {items.map((item, idx) => (
+          <div key={idx} className="flex items-center gap-1.5">
+            <Input
+              value={item.label}
+              onChange={(e) => updateItem(idx, 'label', e.target.value)}
+              placeholder="ラベル"
+              className="w-28 h-7 text-xs"
+            />
+            <span className="text-xs text-slate-400">:</span>
+            <Input
+              value={item.value}
+              onChange={(e) => updateItem(idx, 'value', e.target.value)}
+              placeholder="値 or {{変数}}"
+              className="flex-1 h-7 text-xs font-mono"
+            />
+            <button onClick={() => removeItem(idx)} className="rounded p-0.5 text-slate-400 hover:text-red-500">
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <Button variant="outline" size="sm" onClick={addItem} className="text-xs">
+        <Plus className="mr-1 h-3 w-3" /> 項目追加
+      </Button>
+      <DetailSettings block={block} onChange={onChange} />
+    </div>
+  )
+}
+
 // ============================================================
 // ブロックエディタディスパッチ
 // ============================================================
@@ -946,6 +1290,9 @@ function BlockEditorDispatch({ block, onChange, seals }: BlockEditorProps) {
     case 'image': return <ImageBlockEditor block={block} onChange={onChange} seals={seals} />
     case 'date_line': return <DateLineBlockEditor block={block} onChange={onChange} seals={seals} />
     case 'address_block': return <AddressBlockEditor block={block} onChange={onChange} seals={seals} />
+    case 'list': return <ListBlockEditor block={block} onChange={onChange} seals={seals} />
+    case 'two_column': return <TwoColumnBlockEditor block={block} onChange={onChange} seals={seals} />
+    case 'horizontal_items': return <HorizontalItemsBlockEditor block={block} onChange={onChange} seals={seals} />
     default: return <div className="text-xs text-slate-400">未対応のブロックタイプ</div>
   }
 }
@@ -984,9 +1331,27 @@ function RenderText({ text }: { text: string }) {
   )
 }
 
+/** ブロック共通のスタイルオブジェクトを生成 */
+function getBlockStyle(block: TemplateBlock): React.CSSProperties {
+  const style: React.CSSProperties = {}
+  if (block.color) style.color = block.color
+  if (block.backgroundColor && block.backgroundColor !== '#ffffff') style.backgroundColor = block.backgroundColor
+  if (block.indent) style.marginLeft = `${block.indent * 0.8}px`
+  if (block.paddingTop) style.paddingTop = `${block.paddingTop * 0.8}px`
+  if (block.paddingBottom) style.paddingBottom = `${block.paddingBottom * 0.8}px`
+  if (block.paddingLeft) style.paddingLeft = `${block.paddingLeft * 0.8}px`
+  if (block.paddingRight) style.paddingRight = `${block.paddingRight * 0.8}px`
+  if (block.borderWidth && block.borderWidth > 0 && block.borderStyle && block.borderStyle !== 'none') {
+    style.border = `${block.borderWidth * 0.5}px ${block.borderStyle} ${block.borderColor ?? '#000000'}`
+    style.borderRadius = '2px'
+  }
+  return style
+}
+
 /** A4プレビューの各ブロックレンダラ */
 function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSeal[] }) {
   const alignClass = block.align === 'center' ? 'text-center' : block.align === 'right' ? 'text-right' : 'text-left'
+  const blockStyle = getBlockStyle(block)
 
   switch (block.type) {
     case 'heading': {
@@ -998,6 +1363,7 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
           style={{
             letterSpacing: `${(block.letterSpacing ?? 0) * 0.5}px`,
             fontFamily: getFontCss(block.fontFamily),
+            ...blockStyle,
           }}
         >
           <RenderText text={block.content ?? ''} />
@@ -1015,6 +1381,7 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
             textDecoration: block.underline ? 'underline' : 'none',
             lineHeight: block.lineHeight ?? 1.8,
             fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined,
+            ...blockStyle,
           }}
         >
           {(block.content ?? '').split('\n').map((line, i) => (
@@ -1024,7 +1391,7 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
       )
     case 'variable_line':
       return (
-        <div className="text-[8px]" style={{ fontFamily: getFontCss(block.fontFamily), fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined }}>
+        <div className="text-[8px]" style={{ fontFamily: getFontCss(block.fontFamily), fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined, ...blockStyle }}>
           {block.variableLabel || 'ラベル'}: <span className="rounded bg-amber-100 px-0.5 font-mono text-amber-700">{`{{${block.variableKey || 'key'}}}`}</span>
         </div>
       )
@@ -1032,30 +1399,32 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
       const headers = block.tableHeaders ?? []
       const cells = block.tableCells ?? []
       return (
-        <table className="w-full border-collapse text-[7px]">
-          {headers.length > 0 && (
-            <thead>
-              <tr>
-                {headers.map((h, c) => (
-                  <th key={c} className="border border-slate-400 bg-slate-100 px-1 py-0.5 text-center font-semibold">
-                    <RenderText text={h} />
-                  </th>
-                ))}
-              </tr>
-            </thead>
-          )}
-          <tbody>
-            {cells.map((row, r) => (
-              <tr key={r}>
-                {row.map((cell, c) => (
-                  <td key={c} className="border border-slate-400 px-1 py-0.5 text-center">
-                    <RenderText text={cell} />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={blockStyle}>
+          <table className="w-full border-collapse text-[7px]">
+            {headers.length > 0 && (
+              <thead>
+                <tr>
+                  {headers.map((h, c) => (
+                    <th key={c} className="border border-slate-400 bg-slate-100 px-1 py-0.5 text-center font-semibold">
+                      <RenderText text={h} />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
+            <tbody>
+              {cells.map((row, r) => (
+                <tr key={r}>
+                  {row.map((cell, c) => (
+                    <td key={c} className="border border-slate-400 px-1 py-0.5 text-center">
+                      <RenderText text={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )
     }
     case 'seal': {
@@ -1094,6 +1463,7 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
             fontFamily: getFontCss(block.fontFamily),
             fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined,
             lineHeight: block.lineHeight ?? 1.6,
+            ...blockStyle,
           }}
         >
           {(block.content ?? '').split('\n').map((line, i) => (
@@ -1126,6 +1496,63 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
           {block.addressName && <div><RenderText text={block.addressName} /> {block.addressSuffix === '御中' ? '' : block.addressSuffix}</div>}
         </div>
       )
+    case 'list': {
+      const items = block.listItems ?? []
+      const isNumbered = block.listType === 'numbered'
+      const ListTag = isNumbered ? 'ol' : 'ul'
+      return (
+        <div style={blockStyle}>
+          <ListTag className={`text-[7px] ${isNumbered ? 'list-decimal' : 'list-disc'} pl-4`}
+            style={{
+              fontFamily: getFontCss(block.fontFamily),
+              fontSize: block.fontSize ? `${block.fontSize * 0.6}px` : undefined,
+            }}
+          >
+            {items.map((item, i) => (
+              <li key={i}><RenderText text={item} /></li>
+            ))}
+          </ListTag>
+        </div>
+      )
+    }
+    case 'two_column': {
+      const ratio = block.columnRatio ?? '50-50'
+      const [left, right] = ratio.split('-').map(Number)
+      return (
+        <div className="flex gap-2 text-[7px]" style={blockStyle}>
+          <div style={{ flex: left }}>
+            {(block.columnLeftContent ?? '').split('\n').map((line, i) => (
+              <div key={i}>{line ? <RenderText text={line} /> : '\u00A0'}</div>
+            ))}
+          </div>
+          <div style={{ flex: right }}>
+            {(block.columnRightContent ?? '').split('\n').map((line, i) => (
+              <div key={i}>{line ? <RenderText text={line} /> : '\u00A0'}</div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+    case 'horizontal_items': {
+      const items = block.horizontalItems ?? []
+      return (
+        <div
+          className="flex justify-between text-[7px]"
+          style={{
+            borderBottom: block.borderWidth ? `${block.borderWidth * 0.5}px ${block.borderStyle ?? 'solid'} ${block.borderColor ?? '#000'}` : undefined,
+            ...blockStyle,
+          }}
+        >
+          {items.map((item, i) => (
+            <div key={i} className="flex-1 text-center">
+              <span className="font-semibold">{item.label}</span>
+              {item.label && item.value ? ': ' : ''}
+              <RenderText text={item.value} />
+            </div>
+          ))}
+        </div>
+      )
+    }
     default:
       return <div className="text-[7px] text-slate-400">[{block.type}]</div>
   }
@@ -1158,6 +1585,14 @@ function A4Preview({ blocks, seals }: { blocks: TemplateBlock[]; seals: LocalSea
 }
 
 // ============================================================
+// Undo/Redo 管理用の型
+// ============================================================
+interface UndoState {
+  past: TemplateBlock[][]
+  future: TemplateBlock[][]
+}
+
+// ============================================================
 // メインエディタページ
 // ============================================================
 
@@ -1176,10 +1611,22 @@ export default function TemplateEditPage() {
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
 
   // ドラッグ&ドロップ用
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  // Undo/Redo 履歴
+  const undoRef = useRef<UndoState>({ past: [], future: [] })
+
+  /** Undo履歴にスナップショットを記録 */
+  const pushUndoSnapshot = useCallback((currentBlocks: TemplateBlock[]) => {
+    const state = undoRef.current
+    state.past = [...state.past.slice(-19), currentBlocks.map(b => ({ ...b }))]
+    state.future = []
+  }, [])
 
   // Google Fonts の読み込み
   useEffect(() => {
@@ -1208,34 +1655,44 @@ export default function TemplateEditPage() {
 
   // ブロック操作
   const addBlock = useCallback((type: TemplateBlockType) => {
-    const maxOrder = blocks.length > 0 ? Math.max(...blocks.map((b) => b.order)) : -1
-    const newBlock = createDefaultBlock(type, maxOrder + 1)
-    setBlocks((prev) => [...prev, newBlock])
-  }, [blocks])
+    setBlocks((prev) => {
+      pushUndoSnapshot(prev)
+      const maxOrder = prev.length > 0 ? Math.max(...prev.map((b) => b.order)) : -1
+      const newBlock = createDefaultBlock(type, maxOrder + 1)
+      return [...prev, newBlock]
+    })
+  }, [pushUndoSnapshot])
 
   const updateBlock = useCallback((id: string, updated: TemplateBlock) => {
-    setBlocks((prev) => prev.map((b) => (b.id === id ? updated : b)))
-  }, [])
+    setBlocks((prev) => {
+      pushUndoSnapshot(prev)
+      return prev.map((b) => (b.id === id ? updated : b))
+    })
+  }, [pushUndoSnapshot])
 
   const removeBlock = useCallback((id: string) => {
     setBlocks((prev) => {
+      pushUndoSnapshot(prev)
       const filtered = prev.filter((b) => b.id !== id)
       return filtered.map((b, i) => ({ ...b, order: i }))
     })
-  }, [])
+    if (selectedBlockId === id) setSelectedBlockId(null)
+  }, [pushUndoSnapshot, selectedBlockId])
 
   const duplicateBlock = useCallback((id: string) => {
     setBlocks((prev) => {
+      pushUndoSnapshot(prev)
       const idx = prev.findIndex((b) => b.id === id)
       if (idx < 0) return prev
       const source = prev[idx]
       const clone: TemplateBlock = { ...source, id: generateBlockId(), order: source.order + 0.5 }
       return [...prev, clone].sort((a, b) => a.order - b.order).map((b, i) => ({ ...b, order: i }))
     })
-  }, [])
+  }, [pushUndoSnapshot])
 
   const moveBlock = useCallback((id: string, direction: 'up' | 'down') => {
     setBlocks((prev) => {
+      pushUndoSnapshot(prev)
       const sorted = [...prev].sort((a, b) => a.order - b.order)
       const idx = sorted.findIndex((b) => b.id === id)
       if (idx < 0) return prev
@@ -1245,6 +1702,29 @@ export default function TemplateEditPage() {
       sorted[idx] = { ...sorted[idx], order: sorted[swapIdx].order }
       sorted[swapIdx] = { ...sorted[swapIdx], order: temp }
       return sorted
+    })
+  }, [pushUndoSnapshot])
+
+  // Undo / Redo
+  const handleUndo = useCallback(() => {
+    const state = undoRef.current
+    if (state.past.length === 0) return
+    setBlocks((current) => {
+      const prev = state.past[state.past.length - 1]
+      state.past = state.past.slice(0, -1)
+      state.future = [...state.future, current.map(b => ({ ...b }))]
+      return prev
+    })
+  }, [])
+
+  const handleRedo = useCallback(() => {
+    const state = undoRef.current
+    if (state.future.length === 0) return
+    setBlocks((current) => {
+      const next = state.future[state.future.length - 1]
+      state.future = state.future.slice(0, -1)
+      state.past = [...state.past, current.map(b => ({ ...b }))]
+      return next
     })
   }, [])
 
@@ -1265,6 +1745,7 @@ export default function TemplateEditPage() {
       return
     }
     setBlocks((prev) => {
+      pushUndoSnapshot(prev)
       const sorted = [...prev].sort((a, b) => a.order - b.order)
       const [moved] = sorted.splice(dragIndex, 1)
       sorted.splice(dropIdx, 0, moved)
@@ -1272,7 +1753,7 @@ export default function TemplateEditPage() {
     })
     setDragIndex(null)
     setDragOverIndex(null)
-  }, [dragIndex])
+  }, [dragIndex, pushUndoSnapshot])
 
   const handleDragEnd = useCallback(() => {
     setDragIndex(null)
@@ -1311,6 +1792,9 @@ export default function TemplateEditPage() {
         case 'address_block': lines.push(`${b.addressCompany ?? ''} ${b.addressSuffix ?? ''}`); break
         case 'signature': lines.push('', b.companyName ?? '', `${b.representativeTitle ?? ''} ${b.representativeName ?? ''}`); break
         case 'notice': lines.push(b.content ?? ''); break
+        case 'list': lines.push(...(b.listItems ?? []).map((item, i) => b.listType === 'numbered' ? `${i + 1}. ${item}` : `- ${item}`)); break
+        case 'two_column': lines.push(`${b.columnLeftContent ?? ''} | ${b.columnRightContent ?? ''}`); break
+        case 'horizontal_items': lines.push((b.horizontalItems ?? []).map(it => `${it.label}: ${it.value}`).join(' / ')); break
         default: break
       }
     }
@@ -1341,6 +1825,47 @@ export default function TemplateEditPage() {
       setSaving(false)
     }
   }, [template, blocks, templateName, templateDescription, templateDocType, extractVariables, buildBodyTemplate])
+
+  // キーボードショートカット
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey
+
+      // Ctrl/Cmd+S: 保存
+      if (isMod && e.key === 's') {
+        e.preventDefault()
+        handleSave()
+        return
+      }
+
+      // Ctrl/Cmd+Z: Undo
+      if (isMod && !e.shiftKey && e.key === 'z') {
+        e.preventDefault()
+        handleUndo()
+        return
+      }
+
+      // Ctrl/Cmd+Shift+Z: Redo
+      if (isMod && e.shiftKey && e.key === 'z') {
+        e.preventDefault()
+        handleRedo()
+        return
+      }
+
+      // Delete/Backspace で選択中ブロック削除（input/textarea内では無効化）
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlockId) {
+        const tag = (e.target as HTMLElement).tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        e.preventDefault()
+        if (window.confirm('選択中のブロックを削除しますか？')) {
+          removeBlock(selectedBlockId)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleSave, handleUndo, handleRedo, selectedBlockId, removeBlock])
 
   // ソート済みブロック
   const sortedBlocks = useMemo(() => [...blocks].sort((a, b) => a.order - b.order), [blocks])
@@ -1396,6 +1921,35 @@ export default function TemplateEditPage() {
           <Badge variant="outline" className="text-xs">{variableCount}変数</Badge>
         </div>
         <div className="flex items-center gap-2">
+          {/* Undo/Redo ボタン */}
+          <button onClick={handleUndo} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="元に戻す (Ctrl+Z)">
+            <Undo2 className="h-4 w-4" />
+          </button>
+          <button onClick={handleRedo} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="やり直し (Ctrl+Shift+Z)">
+            <Redo2 className="h-4 w-4" />
+          </button>
+          <div className="h-5 w-px bg-slate-300" />
+          {/* ショートカット表示トグル */}
+          <div className="relative">
+            <button
+              onClick={() => setShowShortcuts(!showShortcuts)}
+              className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              title="ショートカット一覧"
+            >
+              <Keyboard className="h-4 w-4" />
+            </button>
+            {showShortcuts && (
+              <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                <div className="mb-2 text-xs font-bold text-slate-600">ショートカット</div>
+                <div className="space-y-1 text-[11px] text-slate-500">
+                  <div className="flex justify-between"><span>保存</span><kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px]">Ctrl+S</kbd></div>
+                  <div className="flex justify-between"><span>元に戻す</span><kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px]">Ctrl+Z</kbd></div>
+                  <div className="flex justify-between"><span>やり直し</span><kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px]">Ctrl+Shift+Z</kbd></div>
+                  <div className="flex justify-between"><span>ブロック削除</span><kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px]">Delete</kbd></div>
+                </div>
+              </div>
+            )}
+          </div>
           {saved && <span className="text-sm text-green-600">保存しました</span>}
           <Button onClick={handleSave} disabled={saving} size="sm">
             <Save className="mr-1.5 h-4 w-4" />
@@ -1437,31 +1991,42 @@ export default function TemplateEditPage() {
 
       {/* 3パネルレイアウト */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左パネル: ブロックパレット */}
+        {/* 左パネル: ブロックパレット（カテゴリ分類） */}
         <div className="w-44 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/80 p-3">
-          <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">ブロック追加</div>
-          <div className="space-y-1">
-            {BLOCK_TYPES.map((bt) => (
-              <button
-                key={bt.type}
-                onClick={() => addBlock(bt.type)}
-                className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-all duration-150 hover:bg-white hover:shadow-md hover:-translate-y-px"
-                title={bt.description}
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600 group-hover:ring-blue-200">
-                  {bt.icon}
-                </span>
-                <div className="min-w-0">
-                  <span className="block font-medium">{bt.label}</span>
-                  <span className="block truncate text-[10px] text-slate-400">{bt.description}</span>
+          {BLOCK_CATEGORIES.map((category) => {
+            const typesInCategory = BLOCK_TYPES.filter((bt) => bt.category === category)
+            return (
+              <div key={category} className="mb-3">
+                <div className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span className="h-px flex-1 bg-slate-300" />
+                  <span className="px-1">{category}</span>
+                  <span className="h-px flex-1 bg-slate-300" />
                 </div>
-              </button>
-            ))}
-          </div>
+                <div className="space-y-1">
+                  {typesInCategory.map((bt) => (
+                    <button
+                      key={bt.type}
+                      onClick={() => addBlock(bt.type)}
+                      className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-all duration-150 hover:bg-white hover:shadow-md hover:-translate-y-px"
+                      title={bt.description}
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600 group-hover:ring-blue-200">
+                        {bt.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <span className="block font-medium">{bt.label}</span>
+                        <span className="block truncate text-[10px] text-slate-400">{bt.description}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
 
         {/* 中央パネル: メイン編集エリア */}
-        <div className="flex-1 overflow-y-auto bg-gray-100 p-4">
+        <div className="flex-1 overflow-y-auto bg-gray-100 p-4" onClick={() => setSelectedBlockId(null)}>
           <div className="mx-auto max-w-2xl space-y-2">
             {sortedBlocks.map((block, idx) => (
               <div
@@ -1471,11 +2036,17 @@ export default function TemplateEditPage() {
                 onDragOver={(e) => handleDragOver(e, idx)}
                 onDrop={() => handleDrop(idx)}
                 onDragEnd={handleDragEnd}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSelectedBlockId(block.id)
+                }}
                 className={`group rounded-xl border bg-white shadow-sm transition-all duration-200 ${
                   dragOverIndex === idx && dragIndex !== idx
                     ? 'border-blue-400 ring-2 ring-blue-100 shadow-md'
                     : dragIndex === idx
                     ? 'border-blue-300 opacity-50 scale-[0.98]'
+                    : selectedBlockId === block.id
+                    ? 'border-blue-400 ring-2 ring-blue-100'
                     : 'border-slate-200 hover:border-blue-200 hover:shadow-md'
                 }`}
               >

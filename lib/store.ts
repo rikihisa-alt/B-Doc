@@ -334,6 +334,9 @@ export type TemplateBlockType =
   | 'image'          // 画像プレースホルダー
   | 'date_line'      // 日付行
   | 'address_block'  // 宛名ブロック
+  | 'list'           // リスト（箇条書き・番号付き）
+  | 'two_column'     // 2カラムレイアウト
+  | 'horizontal_items' // 横並び項目（キー:値のペア）
 
 /** テンプレートブロックの定義 */
 export interface TemplateBlock {
@@ -383,6 +386,25 @@ export interface TemplateBlock {
   addressDepartment?: string
   addressName?: string
   addressSuffix?: '御中' | '様' | '殿'
+  // スタイル拡張
+  color?: string              // テキスト色 (hex)
+  backgroundColor?: string    // 背景色 (hex)
+  borderColor?: string        // 枠線色 (hex)
+  borderWidth?: number        // 枠線太さ (px)
+  borderStyle?: 'solid' | 'dashed' | 'dotted' | 'none'
+  paddingTop?: number         // 上余白 (mm)
+  paddingBottom?: number      // 下余白 (mm)
+  paddingLeft?: number        // 左余白 (mm)
+  paddingRight?: number       // 右余白 (mm)
+  indent?: number             // インデント (mm)
+  listType?: 'none' | 'bullet' | 'numbered'  // リスト種別
+  listItems?: string[]        // リスト項目
+  // 2カラムレイアウト
+  columnRatio?: string       // '50-50' | '60-40' | '40-60' | '70-30' | '30-70'
+  columnLeftContent?: string
+  columnRightContent?: string
+  // 横並び項目
+  horizontalItems?: { label: string; value: string }[]
 }
 
 // ============================================================
