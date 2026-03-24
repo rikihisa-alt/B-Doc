@@ -1,18 +1,16 @@
 'use client'
 
 // =============================================================================
-// B-Doc 新規文書作成ページ（ストアベース版）
-// 左カラム: 入力フォーム（40%）
-// 右カラム: A4プレビュー（60%）
+// B-Doc 新規文書作成ページ（簡易フロー版）
+// テンプレート選択 → フォーム入力 → PDF生成・ダウンロード
 // =============================================================================
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
@@ -22,98 +20,236 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { ReturnNotice } from '@/components/document/return-notice'
-import { A4Preview } from '@/components/document/a4-preview'
-import type { TemplateVariable, ValidationError } from '@/types'
-import {
-  getTemplates,
   getTemplate,
+  getSeal,
   createDocument,
-  saveDocument as storeDocSave,
-  getDocument,
-  getApprovalRecords,
+  saveDocument,
   addAuditLog,
 } from '@/lib/store'
-import type { LocalTemplate, LocalDocument } from '@/lib/store'
+import type { LocalTemplate, TemplateBlock, LocalSeal } from '@/lib/store'
+import { cn } from '@/lib/utils'
 import {
-  ArrowLeft,
-  Save,
-  Send,
-  Trash2,
+  ChevronLeft,
+  FileDown,
   Loader2,
-  AlertTriangle,
-  ArrowDown,
-  Circle,
 } from 'lucide-react'
 
 // =============================================================================
-// 定数
+// 変数置換ヘルパー
 // =============================================================================
 
-/** 提出前チェックリスト項目 */
-const PRE_SUBMIT_CHECKLIST = [
-  { key: 'name_check', label: '氏名に誤字がないことを確認しました' },
-  { key: 'date_check', label: '日付が正確であることを確認しました' },
-  { key: 'content_check', label: '文書内容に誤りがないことを確認しました' },
-  { key: 'recipient_check', label: '宛先情報が正しいことを確認しました' },
-] as const
-
-// =============================================================================
-// テンプレート変数をセクション分割するヘルパー
-// =============================================================================
-
-interface VariableSection {
-  title: string
-  variables: LocalTemplate['variables']
+/** 文字列中の {{key}} を formValues で置換する */
+function replaceVars(text: string, values: Record<string, string>): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => values[key] ?? '')
 }
 
-/** テンプレート変数をセクションごとにグループ化する */
-function groupVariablesBySection(variables: LocalTemplate['variables']): VariableSection[] {
-  const sectionMap: Record<string, string> = {
-    target_: '対象者情報',
-    recipient_: '宛先情報',
-    company_: '会社情報',
-    date_: '日付情報',
-    amount_: '金額情報',
-    detail_: '詳細情報',
+// =============================================================================
+// 印影 SVG レンダリング（インライン）
+// =============================================================================
+
+function SealPreview({ seal }: { seal: LocalSeal }) {
+  const sizePx = seal.size * 2.5
+  if (seal.type === 'round') {
+    const r = sizePx / 2 - seal.border_width
+    return (
+      <svg width={sizePx} height={sizePx} viewBox={`0 0 ${sizePx} ${sizePx}`}>
+        <circle cx={sizePx / 2} cy={sizePx / 2} r={r}
+          fill="none" stroke={seal.color} strokeWidth={seal.border_width} />
+        <text x={sizePx / 2} y={sizePx / 2 - 6} textAnchor="middle" fontSize={sizePx * 0.18}
+          fill={seal.color} fontFamily={seal.font_family}>{seal.text_line1}</text>
+        <text x={sizePx / 2} y={sizePx / 2 + 10} textAnchor="middle" fontSize={sizePx * 0.16}
+          fill={seal.color} fontFamily={seal.font_family}>{seal.text_line2}</text>
+      </svg>
+    )
   }
+  if (seal.type === 'square') {
+    return (
+      <svg width={sizePx} height={sizePx} viewBox={`0 0 ${sizePx} ${sizePx}`}>
+        <rect x={seal.border_width / 2} y={seal.border_width / 2}
+          width={sizePx - seal.border_width} height={sizePx - seal.border_width}
+          fill="none" stroke={seal.color} strokeWidth={seal.border_width} />
+        <text x={sizePx / 2} y={sizePx * 0.4} textAnchor="middle" fontSize={sizePx * 0.22}
+          fill={seal.color} fontFamily={seal.font_family}>{seal.text_line1}</text>
+        <text x={sizePx / 2} y={sizePx * 0.65} textAnchor="middle" fontSize={sizePx * 0.18}
+          fill={seal.color} fontFamily={seal.font_family}>{seal.text_line2}</text>
+      </svg>
+    )
+  }
+  // personal
+  return (
+    <svg width={sizePx} height={sizePx} viewBox={`0 0 ${sizePx} ${sizePx}`}>
+      <circle cx={sizePx / 2} cy={sizePx / 2} r={sizePx / 2 - seal.border_width}
+        fill="none" stroke={seal.color} strokeWidth={seal.border_width} />
+      <text x={sizePx / 2} y={sizePx / 2 + 4} textAnchor="middle" fontSize={sizePx * 0.35}
+        fill={seal.color} fontFamily={seal.font_family}>{seal.text_line1}</text>
+    </svg>
+  )
+}
 
-  const sections: Record<string, LocalTemplate['variables']> = {}
-  const general: LocalTemplate['variables'] = []
+// =============================================================================
+// A4 ブロックレンダラー
+// =============================================================================
 
-  for (const v of variables) {
-    let matched = false
-    for (const [prefix, sectionTitle] of Object.entries(sectionMap)) {
-      if (v.key.startsWith(prefix)) {
-        if (!sections[sectionTitle]) sections[sectionTitle] = []
-        sections[sectionTitle].push(v)
-        matched = true
-        break
+function BlockRenderer({ block, values }: { block: TemplateBlock; values: Record<string, string> }) {
+  const content = block.content ? replaceVars(block.content, values) : ''
+  const alignClass = block.align === 'center' ? 'text-center' : block.align === 'right' ? 'text-right' : 'text-left'
+
+  switch (block.type) {
+    case 'heading': {
+      const Tag = block.level === 1 ? 'h1' : block.level === 2 ? 'h2' : 'h3'
+      const sizeClass = block.level === 1 ? 'text-xl font-bold' : block.level === 2 ? 'text-lg font-semibold' : 'text-base font-semibold'
+      return (
+        <Tag className={cn(sizeClass, alignClass, 'my-2')}
+          style={{ letterSpacing: block.letterSpacing ? `${block.letterSpacing}px` : undefined }}>
+          {content}
+        </Tag>
+      )
+    }
+
+    case 'paragraph': {
+      return (
+        <p className={cn(alignClass, 'my-1 whitespace-pre-wrap')}
+          style={{
+            fontSize: block.fontSize ? `${block.fontSize}px` : undefined,
+            fontWeight: block.bold ? 'bold' : undefined,
+            fontStyle: block.italic ? 'italic' : undefined,
+            textDecoration: block.underline ? 'underline' : undefined,
+            lineHeight: block.lineHeight ? block.lineHeight : undefined,
+          }}>
+          {content}
+        </p>
+      )
+    }
+
+    case 'variable_line': {
+      const val = block.variableKey ? values[block.variableKey] ?? '' : ''
+      const isFilled = val.trim().length > 0
+      return (
+        <div className="my-1 flex gap-4 text-sm">
+          <span className="w-32 shrink-0 font-medium">{block.variableLabel}:</span>
+          <span className={cn('flex-1', !isFilled && 'bg-yellow-100 px-1 rounded text-gray-400')}>
+            {isFilled ? val : '（未入力）'}
+          </span>
+        </div>
+      )
+    }
+
+    case 'table': {
+      if (!block.tableCells) return null
+      return (
+        <table className="my-2 w-full border-collapse border border-gray-400 text-xs">
+          {block.tableHeaders && (
+            <thead>
+              <tr className="bg-gray-100">
+                {block.tableHeaders.map((h, i) => (
+                  <th key={i} className="border border-gray-400 px-2 py-1 font-medium">
+                    {replaceVars(h, values)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody>
+            {block.tableCells.map((row, ri) => (
+              <tr key={ri}>
+                {row.map((cell, ci) => (
+                  <td key={ci} className="border border-gray-400 px-2 py-1">
+                    {replaceVars(cell, values)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )
+    }
+
+    case 'seal': {
+      const seal = block.sealId ? getSeal(block.sealId) : null
+      if (!seal) return <div className="my-2 text-xs text-gray-400">（印影なし）</div>
+      const posClass = block.sealPosition === 'center' ? 'justify-center' : block.sealPosition === 'right' ? 'justify-end' : 'justify-start'
+      return (
+        <div className={cn('my-2 flex', posClass)}>
+          <SealPreview seal={seal} />
+        </div>
+      )
+    }
+
+    case 'signature': {
+      return (
+        <div className="my-4 text-right text-sm leading-relaxed">
+          {block.companyName && <p>{block.companyName}</p>}
+          {block.representativeTitle && <p>{block.representativeTitle}</p>}
+          {block.representativeName && <p className="font-medium">{block.representativeName}</p>}
+        </div>
+      )
+    }
+
+    case 'divider': {
+      return (
+        <hr className="my-3"
+          style={{
+            borderStyle: block.dividerStyle ?? 'solid',
+            borderWidth: block.dividerThickness ? `${block.dividerThickness}px 0 0 0` : undefined,
+          }}
+        />
+      )
+    }
+
+    case 'spacer': {
+      return <div style={{ height: block.spacerHeight ? `${block.spacerHeight}px` : '10px' }} />
+    }
+
+    case 'page_break': {
+      return (
+        <div className="my-4 border-t-2 border-dashed border-gray-300 py-1 text-center text-[10px] text-gray-400">
+          --- 改ページ ---
+        </div>
+      )
+    }
+
+    case 'notice': {
+      const styleMap: Record<string, string> = {
+        info: 'bg-blue-50 border-blue-200 text-blue-800',
+        warning: 'bg-amber-50 border-amber-200 text-amber-800',
+        bordered: 'bg-gray-50 border-gray-300 text-gray-700',
       }
+      return (
+        <div className={cn('my-2 whitespace-pre-wrap rounded border p-3 text-xs', styleMap[block.noticeStyle ?? 'bordered'])}>
+          {content}
+        </div>
+      )
     }
-    if (!matched) {
-      general.push(v)
-    }
-  }
 
-  const result: VariableSection[] = []
-  if (general.length > 0) {
-    result.push({ title: '基本情報', variables: general })
+    case 'date_line': {
+      return <p className={cn('my-1 text-sm', alignClass)}>{content}</p>
+    }
+
+    case 'address_block': {
+      const company = block.addressCompany ? replaceVars(block.addressCompany, values) : ''
+      const dept = block.addressDepartment ? replaceVars(block.addressDepartment, values) : ''
+      const name = block.addressName ? replaceVars(block.addressName, values) : ''
+      const suffix = block.addressSuffix ?? ''
+      return (
+        <div className="my-2 text-sm">
+          {company && <p className="font-medium">{company} {suffix}</p>}
+          {dept && <p>{dept}</p>}
+          {name && <p>{name} {suffix && !company ? suffix : ''}</p>}
+        </div>
+      )
+    }
+
+    case 'image': {
+      return (
+        <div className="my-2 flex h-24 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400">
+          画像プレースホルダー
+        </div>
+      )
+    }
+
+    default:
+      return null
   }
-  for (const [title, vars] of Object.entries(sections)) {
-    result.push({ title, variables: vars })
-  }
-  return result
 }
 
 // =============================================================================
@@ -123,754 +259,382 @@ function groupVariablesBySection(variables: LocalTemplate['variables']): Variabl
 export default function NewDocumentPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const templateId = searchParams.get('template_id') ?? ''
 
-  // URL パラメータからテンプレートIDと差戻し文書IDを取得
-  const initialTemplateId = searchParams.get('template_id') ?? ''
-  const returnedDocId = searchParams.get('returned_from') ?? null
-
-  // ---------- フォーム状態 ----------
-  const [title, setTitle] = useState('')
-  const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId)
-  const [templates, setTemplates] = useState<LocalTemplate[]>([])
-  const [templateVariables, setTemplateVariables] = useState<LocalTemplate['variables']>([])
-  const [bodyTemplate, setBodyTemplate] = useState('')
+  // テンプレートデータ
+  const [template, setTemplate] = useState<LocalTemplate | null>(null)
+  // フォーム値
   const [formValues, setFormValues] = useState<Record<string, string>>({})
+  // フィールドエラー
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  const [checklist, setChecklist] = useState<Record<string, boolean>>({})
+  // PDF生成中フラグ
+  const [isGenerating, setIsGenerating] = useState(false)
+  // 読み込み中
+  const [loading, setLoading] = useState(true)
 
-  // ---------- 差戻し情報 ----------
-  const [returnComment, setReturnComment] = useState<string | null>(null)
-  const [returnerName, setReturnerName] = useState<string>('')
-  const [returnerRole, setReturnerRole] = useState<string>('')
-  const [returnedAt, setReturnedAt] = useState<string>('')
-
-  // ---------- UI状態 ----------
-  const [isSaving, setIsSaving] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isDiscarding, setIsDiscarding] = useState(false)
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
-  const [draftId, setDraftId] = useState<string | null>(returnedDocId)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
-
-  const returnNoticeRef = useRef<HTMLDivElement>(null)
-
-  // 現在のテンプレート名
-  const selectedTemplateName = useMemo(
-    () => templates.find((t) => t.id === selectedTemplateId)?.name ?? '',
-    [templates, selectedTemplateId]
-  )
-
-  // セクション分割された変数
-  const variableSections = useMemo(
-    () => groupVariablesBySection(templateVariables),
-    [templateVariables]
-  )
-
-  // チェックリスト全完了判定
-  const isChecklistComplete = useMemo(
-    () => PRE_SUBMIT_CHECKLIST.every((item) => checklist[item.key]),
-    [checklist]
-  )
-
-  // ============================================================
-  // テンプレート一覧の取得
-  // ============================================================
+  // テンプレートの読み込み
   useEffect(() => {
-    const allTemplates = getTemplates()
-    setTemplates(allTemplates.filter((t) => t.is_published))
-  }, [])
-
-  // ============================================================
-  // テンプレート選択時: 変数定義と本文テンプレートを取得
-  // ============================================================
-  const loadTemplateVersion = useCallback((templateId: string) => {
     if (!templateId) {
-      setTemplateVariables([])
-      setBodyTemplate('')
+      setLoading(false)
       return
     }
-
     const tpl = getTemplate(templateId)
     if (tpl) {
-      setTemplateVariables(tpl.variables)
-      setBodyTemplate(tpl.body_template)
-
-      // デフォルト値を設定（既存フォーム値がない場合のみ）
-      setFormValues((prev) => {
-        if (Object.keys(prev).length > 0) return prev
-        const defaults: Record<string, string> = {}
-        for (const v of tpl.variables) {
-          if (v.options && v.options.length > 0) {
-            // selectタイプの場合、最初のオプションをデフォルト値にはしない
-          }
-        }
-        return defaults
-      })
+      setTemplate(tpl)
     }
-  }, [])
+    setLoading(false)
+  }, [templateId])
 
-  // ============================================================
-  // 差戻し文書の読み込み
-  // ============================================================
-  useEffect(() => {
-    if (!returnedDocId) return
+  // ソート済みブロック
+  const sortedBlocks = useMemo(() => {
+    if (!template?.blocks) return []
+    return [...template.blocks].sort((a, b) => a.order - b.order)
+  }, [template])
 
-    const doc = getDocument(returnedDocId)
-    if (!doc) return
-
-    setTitle(doc.title)
-    setSelectedTemplateId(doc.template_id ?? '')
-    setFormValues(doc.values)
-
-    // 差戻し理由の取得
-    const records = getApprovalRecords(returnedDocId)
-    const returnRecord = records
-      .filter((r) => r.action === 'returned' || r.action === 'rejected')
-      .sort((a, b) => new Date(b.acted_at).getTime() - new Date(a.acted_at).getTime())[0]
-
-    if (returnRecord) {
-      setReturnComment(returnRecord.comment || '理由の記載なし')
-      setReturnerName(returnRecord.approver_name)
-      setReturnerRole('承認者')
-      setReturnedAt(new Date(returnRecord.acted_at).toLocaleString('ja-JP'))
-    }
-
-    // テンプレート変数をロード
-    if (doc.template_id) {
-      loadTemplateVersion(doc.template_id)
-    }
-  }, [returnedDocId, loadTemplateVersion])
-
-  // ============================================================
-  // テンプレート変更ハンドラ
-  // ============================================================
-  const handleTemplateChange = useCallback(
-    (templateId: string) => {
-      setSelectedTemplateId(templateId)
-      setFormValues({})
-      setFieldErrors({})
-      loadTemplateVersion(templateId)
-      setHasUnsavedChanges(true)
-    },
-    [loadTemplateVersion]
-  )
-
-  // ============================================================
-  // 初期テンプレートの自動ロード
-  // ============================================================
-  useEffect(() => {
-    if (initialTemplateId && !returnedDocId) {
-      loadTemplateVersion(initialTemplateId)
-    }
-  }, [initialTemplateId, returnedDocId, loadTemplateVersion])
-
-  // ============================================================
   // フィールド変更ハンドラ
-  // ============================================================
-  const handleFieldChange = useCallback((name: string, value: string) => {
-    setFormValues((prev) => ({ ...prev, [name]: value }))
-    setHasUnsavedChanges(true)
+  const handleFieldChange = useCallback((key: string, value: string) => {
+    setFormValues((prev) => ({ ...prev, [key]: value }))
+    // エラーをクリア
+    setFieldErrors((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
   }, [])
 
-  // ============================================================
-  // onBlur バリデーション
-  // ============================================================
-  const validateField = useCallback(
-    (variable: LocalTemplate['variables'][0], value: string) => {
-      const errors: string[] = []
+  // onBlur バリデーション（必須チェックのみ）
+  const validateField = useCallback((key: string, value: string, required: boolean, label: string) => {
+    if (required && !value.trim()) {
+      setFieldErrors((prev) => ({ ...prev, [key]: `${label}は必須です` }))
+    }
+  }, [])
 
-      if (variable.required && !value.trim()) {
-        errors.push(`${variable.label}は必須項目です`)
-      }
-
-      setFieldErrors((prev) => ({
-        ...prev,
-        [variable.key]: errors[0] ?? '',
-      }))
-
-      return errors.length === 0
-    },
-    []
-  )
-
-  // ============================================================
   // 全フィールドバリデーション
-  // ============================================================
-  const validateAllFields = useCallback((): ValidationError[] => {
-    const errors: ValidationError[] = []
-
-    if (!title.trim()) {
-      errors.push({ field: 'title', message: 'タイトルは必須です', type: 'required' })
-    }
-
-    if (!selectedTemplateId) {
-      errors.push({ field: 'template_id', message: 'テンプレートを選択してください', type: 'required' })
-    }
-
-    for (const variable of templateVariables) {
-      const value = formValues[variable.key] ?? ''
-      if (variable.required && !value.trim()) {
-        errors.push({
-          field: variable.key,
-          message: `${variable.label}は必須項目です`,
-          type: 'required',
-        })
+  const validateAll = useCallback((): boolean => {
+    if (!template) return false
+    const errors: Record<string, string> = {}
+    for (const v of template.variables) {
+      const val = formValues[v.key] ?? ''
+      if (v.required && !val.trim()) {
+        errors[v.key] = `${v.label}は必須です`
       }
     }
+    setFieldErrors(errors)
+    return Object.keys(errors).length === 0
+  }, [template, formValues])
 
-    const newFieldErrors: Record<string, string> = {}
-    for (const err of errors) {
-      if (err.field !== 'title' && err.field !== 'template_id') {
-        newFieldErrors[err.field] = err.message
-      }
-    }
-    setFieldErrors(newFieldErrors)
+  // PDF 生成＆ダウンロード
+  const handleGeneratePdf = useCallback(async () => {
+    if (!template) return
+    if (!validateAll()) return
 
-    return errors
-  }, [title, selectedTemplateId, templateVariables, formValues])
-
-  // ============================================================
-  // 下書き保存
-  // ============================================================
-  const saveDraft = useCallback(() => {
-    if (isSaving) return
-
-    setIsSaving(true)
+    setIsGenerating(true)
     try {
-      const tpl = selectedTemplateId ? getTemplate(selectedTemplateId) : null
+      // localStorage に文書を保存
+      const doc = createDocument({
+        title: `${template.name}`,
+        template_id: template.id,
+        document_type: template.document_type,
+        values: formValues,
+        body_template: template.body_template,
+      })
 
-      if (draftId) {
-        // 既存文書を更新
-        const existing = getDocument(draftId)
-        if (existing) {
-          storeDocSave({
-            ...existing,
-            title: title || '無題の文書',
-            template_id: selectedTemplateId || null,
-            values: formValues,
-            body_template: bodyTemplate,
-            document_type: tpl?.document_type ?? existing.document_type,
-          })
-        }
-      } else {
-        // 新規文書を作成
-        const newDoc = createDocument({
-          title: title || '無題の文書',
-          template_id: selectedTemplateId || null,
-          document_type: tpl?.document_type ?? 'employment_cert',
-          values: formValues,
-          body_template: bodyTemplate,
-        })
-        setDraftId(newDoc.id)
-      }
+      // 発行済みにする
+      saveDocument({
+        ...doc,
+        status: 'issued',
+        issued_at: new Date().toISOString(),
+        issued_by: 'デモユーザー',
+      })
 
-      setLastSavedAt(new Date())
-      setHasUnsavedChanges(false)
-    } finally {
-      setIsSaving(false)
-    }
-  }, [title, selectedTemplateId, bodyTemplate, formValues, draftId, isSaving])
+      // 監査ログ
+      addAuditLog({
+        user_name: 'デモユーザー',
+        user_role: 'creator',
+        target_type: 'document',
+        target_id: doc.id,
+        target_label: doc.title,
+        operation: 'issue',
+        before_value: null,
+        after_value: { status: 'issued' },
+        success: true,
+        comment: 'PDF生成・ダウンロード',
+      })
 
-  // ============================================================
-  // ページ離脱警告
-  // ============================================================
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault()
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [hasUnsavedChanges])
+      // プレビュー領域の内容をコピーして印刷用ウィンドウを開く
+      const previewEl = document.getElementById('a4-preview-content')
+      if (!previewEl) return
 
-  // ============================================================
-  // 破棄処理
-  // ============================================================
-  const handleDiscard = useCallback(() => {
-    setIsDiscarding(true)
-    try {
-      setHasUnsavedChanges(false)
-      router.push('/documents')
-    } finally {
-      setIsDiscarding(false)
-    }
-  }, [router])
-
-  // ============================================================
-  // 申請処理
-  // ============================================================
-  const handleSubmit = useCallback(() => {
-    const errors = validateAllFields()
-    if (errors.length > 0) {
-      setShowSubmitConfirm(false)
-      return
-    }
-
-    if (!isChecklistComplete) {
-      setShowSubmitConfirm(false)
-      return
-    }
-
-    setIsSubmitting(true)
-    try {
-      // まず下書き保存
-      saveDraft()
-
-      const currentDraftId = draftId
-      if (!currentDraftId) {
-        alert('文書の保存に失敗しました。')
+      const printWindow = window.open('', '_blank', 'width=800,height=1000')
+      if (!printWindow) {
+        alert('ポップアップがブロックされました。許可してください。')
         return
       }
 
-      // ステータスを承認待ちに変更
-      const existing = getDocument(currentDraftId)
-      if (existing) {
-        storeDocSave({
-          ...existing,
-          status: 'pending_approval',
-        })
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${template.name}</title>
+<style>
+  @page { size: A4; margin: 20mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif; font-size: 12px; color: #1a1a1a; line-height: 1.6; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #666; padding: 4px 8px; text-align: left; }
+  th { background: #f0f0f0; font-weight: 600; }
+  hr { border: none; border-top: 1px solid #999; margin: 8px 0; }
+  .text-center { text-align: center; }
+  .text-right { text-align: right; }
+  .text-left { text-align: left; }
+  .font-bold { font-weight: bold; }
+  .font-medium { font-weight: 500; }
+  .my-1 { margin: 4px 0; }
+  .my-2 { margin: 8px 0; }
+  .my-3 { margin: 12px 0; }
+  .my-4 { margin: 16px 0; }
+  .notice { border: 1px solid #999; background: #fafafa; padding: 8px 12px; border-radius: 4px; white-space: pre-wrap; font-size: 11px; margin: 8px 0; }
+  .var-line { display: flex; gap: 16px; margin: 4px 0; font-size: 13px; }
+  .var-label { width: 120px; flex-shrink: 0; font-weight: 500; }
+  .seal-container { display: flex; margin: 8px 0; }
+  .seal-left { justify-content: flex-start; }
+  .seal-center { justify-content: center; }
+  .seal-right { justify-content: flex-end; }
+  .signature { text-align: right; margin: 16px 0; font-size: 13px; line-height: 1.8; }
+  h1 { font-size: 20px; margin: 8px 0; }
+  h2 { font-size: 17px; margin: 8px 0; }
+  h3 { font-size: 15px; margin: 8px 0; }
+  .address { margin: 8px 0; font-size: 13px; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+${previewEl.innerHTML}
+</body>
+</html>`)
+      printWindow.document.close()
 
-        // 監査ログ追加
-        addAuditLog({
-          user_name: 'デモユーザー',
-          user_role: 'creator',
-          target_type: 'document',
-          target_id: currentDraftId,
-          target_label: existing.title,
-          operation: 'status_change',
-          before_value: { status: 'draft' },
-          after_value: { status: 'pending_approval' },
-          success: true,
-          comment: null,
-        })
-      }
+      // 印刷ダイアログを表示
+      setTimeout(() => {
+        printWindow.print()
+      }, 500)
 
-      setHasUnsavedChanges(false)
-      router.push(`/documents/${currentDraftId}`)
-    } catch {
-      alert('申請に失敗しました。再度お試しください。')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'PDF生成に失敗しました'
+      alert(message)
     } finally {
-      setIsSubmitting(false)
-      setShowSubmitConfirm(false)
+      setIsGenerating(false)
     }
-  }, [validateAllFields, isChecklistComplete, saveDraft, draftId, router])
+  }, [template, formValues, validateAll])
 
-  // 差戻し理由スクロール
-  const scrollToReturnNotice = useCallback(() => {
-    returnNoticeRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [])
+  // ローディング表示
+  if (loading) {
+    return (
+      <div className="flex h-[calc(100vh-6rem)] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <span className="ml-2 text-sm text-gray-500">読み込み中...</span>
+      </div>
+    )
+  }
 
-  // ============================================================
-  // レンダリング
-  // ============================================================
+  // テンプレートが見つからない場合
+  if (!templateId || !template) {
+    return (
+      <div className="flex h-[calc(100vh-6rem)] flex-col items-center justify-center gap-4">
+        <p className="text-sm text-gray-500">テンプレートが選択されていません。</p>
+        <Link href="/documents/new/select-template">
+          <Button variant="outline">テンプレートを選択する</Button>
+        </Link>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-[calc(100vh-6rem)] flex-col">
       {/* ヘッダー */}
-      <header className="sticky top-0 z-30 border-b bg-white">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/documents"
-              className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              一覧へ
-            </Link>
-            <div className="h-5 w-px bg-gray-200" />
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-semibold text-gray-900">
-                {selectedTemplateName || '新規文書'}
-              </h1>
-              <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-                作成中
-              </span>
-            </div>
-          </div>
+      <div className="flex items-center justify-between border-b bg-white px-6 py-3">
+        <div className="flex items-center gap-3">
+          <Link href="/documents/new/select-template">
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
+              <ChevronLeft className="h-4 w-4" />
+              テンプレート選択に戻る
+            </Button>
+          </Link>
+          <div className="h-5 w-px bg-gray-200" />
+          <h1 className="text-base font-semibold text-gray-900">
+            {template.name}
+            <span className="ml-2 text-sm font-normal text-gray-500">作成中</span>
+          </h1>
+        </div>
+      </div>
 
-          <div className="flex items-center gap-3">
-            {/* 自動保存インジケーター */}
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                  <span>保存中...</span>
-                </>
-              ) : lastSavedAt ? (
-                <>
-                  <Circle className="h-2 w-2 fill-green-500 text-green-500" />
-                  <span>
-                    保存済み:{' '}
-                    {lastSavedAt.toLocaleTimeString('ja-JP', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </>
-              ) : hasUnsavedChanges ? (
-                <>
-                  <Circle className="h-2 w-2 fill-amber-500 text-amber-500" />
-                  <span>未保存の変更あり</span>
-                </>
-              ) : null}
-            </div>
+      {/* メインコンテンツ: 2カラム */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* 左パネル: 入力フォーム (40%) */}
+        <div className="w-2/5 overflow-y-auto border-r bg-gray-50/50 p-6">
+          <div className="mx-auto max-w-md space-y-5">
+            <h2 className="text-sm font-semibold text-gray-700">入力項目</h2>
 
-            {/* テンプレート変更ボタン */}
-            {!returnedDocId && (
-              <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
-                <SelectTrigger className="h-8 w-[200px] text-xs">
-                  <SelectValue placeholder="テンプレートを変更" />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {template.variables.length === 0 && (
+              <p className="py-8 text-center text-sm text-gray-400">
+                このテンプレートには入力項目がありません。
+              </p>
             )}
 
-            {returnComment && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                onClick={scrollToReturnNotice}
-              >
-                <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
-                差戻し理由を確認する
-                <ArrowDown className="ml-1 h-3 w-3" />
-              </Button>
-            )}
+            {template.variables.map((v) => {
+              const value = formValues[v.key] ?? ''
+              const error = fieldErrors[v.key]
+              const errorClass = error ? 'border-red-400 focus-visible:ring-red-400' : ''
+
+              return (
+                <div key={v.key} className="space-y-1.5">
+                  <Label htmlFor={v.key} className="flex items-center gap-1 text-sm">
+                    {v.label}
+                    {v.required && <span className="text-red-500">*</span>}
+                  </Label>
+
+                  {/* テキスト入力 */}
+                  {v.type === 'text' && (
+                    <Input
+                      id={v.key}
+                      value={value}
+                      onChange={(e) => handleFieldChange(v.key, e.target.value)}
+                      onBlur={() => validateField(v.key, value, v.required, v.label)}
+                      className={errorClass}
+                      placeholder={v.label}
+                    />
+                  )}
+
+                  {/* 数値入力 */}
+                  {v.type === 'number' && (
+                    <Input
+                      id={v.key}
+                      type="number"
+                      value={value}
+                      onChange={(e) => handleFieldChange(v.key, e.target.value)}
+                      onBlur={() => validateField(v.key, value, v.required, v.label)}
+                      className={errorClass}
+                      placeholder={v.label}
+                    />
+                  )}
+
+                  {/* 日付入力 */}
+                  {v.type === 'date' && (
+                    <Input
+                      id={v.key}
+                      type="date"
+                      value={value}
+                      onChange={(e) => handleFieldChange(v.key, e.target.value)}
+                      onBlur={() => validateField(v.key, value, v.required, v.label)}
+                      className={errorClass}
+                    />
+                  )}
+
+                  {/* セレクト */}
+                  {v.type === 'select' && v.options && v.options.length > 0 && (
+                    <Select
+                      value={value}
+                      onValueChange={(val) => {
+                        handleFieldChange(v.key, val)
+                        validateField(v.key, val, v.required, v.label)
+                      }}
+                    >
+                      <SelectTrigger id={v.key} className={errorClass}>
+                        <SelectValue placeholder="選択してください" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {v.options.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {/* チェックボックス（boolean） */}
+                  {v.type === 'boolean' && (
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={value === 'true'}
+                        onChange={(e) => handleFieldChange(v.key, e.target.checked ? 'true' : 'false')}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-600">{v.label}</span>
+                    </label>
+                  )}
+
+                  {/* テキストエリア */}
+                  {v.type === 'textarea' && (
+                    <Textarea
+                      id={v.key}
+                      value={value}
+                      onChange={(e) => handleFieldChange(v.key, e.target.value)}
+                      onBlur={() => validateField(v.key, value, v.required, v.label)}
+                      className={cn('min-h-[80px]', errorClass)}
+                      placeholder={v.label}
+                    />
+                  )}
+
+                  {/* エラーメッセージ */}
+                  {error && <p className="text-xs text-red-500">{error}</p>}
+                </div>
+              )
+            })}
           </div>
         </div>
-      </header>
 
-      {/* メインコンテンツ: 2カラムレイアウト */}
-      <main className="flex-1 overflow-hidden">
-        <div className="grid h-full grid-cols-1 lg:grid-cols-5">
-          {/* 左パネル: 入力フォーム (40% = 2/5) */}
-          <div className="col-span-1 lg:col-span-2 overflow-y-auto border-r bg-gray-50/50 p-6">
-            <div className="mx-auto max-w-lg space-y-6">
-              {/* 差戻し通知 */}
-              {returnComment && (
-                <div ref={returnNoticeRef}>
-                  <ReturnNotice
-                    returnerName={returnerName}
-                    returnerRole={returnerRole}
-                    comment={returnComment}
-                    returnedAt={returnedAt}
-                  />
-                </div>
-              )}
-
-              {/* タイトル入力 */}
-              <div className="space-y-1.5">
-                <Label htmlFor="doc-title" className="text-sm font-medium">
-                  文書タイトル <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="doc-title"
-                  value={title}
-                  onChange={(e) => {
-                    setTitle(e.target.value)
-                    setHasUnsavedChanges(true)
-                  }}
-                  onBlur={() => {
-                    if (!title.trim()) {
-                      setFieldErrors((prev) => ({ ...prev, title: 'タイトルは必須です' }))
-                    } else {
-                      setFieldErrors((prev) => ({ ...prev, title: '' }))
-                    }
-                  }}
-                  placeholder="文書タイトルを入力"
-                  className={fieldErrors.title ? 'border-red-400 focus-visible:ring-red-400' : ''}
-                />
-                {fieldErrors.title && (
-                  <p className="text-xs text-red-500">{fieldErrors.title}</p>
-                )}
-              </div>
-
-              {/* テンプレート選択（差戻し時は非表示） */}
-              {!returnedDocId && !selectedTemplateId && (
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">
-                    テンプレート <span className="text-red-500">*</span>
-                  </Label>
-                  <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="テンプレートを選択してください" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* セクション別入力フォーム */}
-              {variableSections.map((section) => (
-                <Card key={section.title}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold text-gray-700">
-                      セクション: {section.title}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {section.variables.map((variable) => (
-                      <FieldInput
-                        key={variable.key}
-                        variable={variable}
-                        value={formValues[variable.key] ?? ''}
-                        error={fieldErrors[variable.key]}
-                        onChange={(val) => handleFieldChange(variable.key, val)}
-                        onBlur={() =>
-                          validateField(variable, formValues[variable.key] ?? '')
-                        }
-                      />
-                    ))}
-                  </CardContent>
-                </Card>
+        {/* 右パネル: A4 ライブプレビュー (60%) */}
+        <div className="w-3/5 overflow-y-auto bg-gray-200/60 p-6">
+          <div className="mx-auto" style={{ maxWidth: '210mm' }}>
+            {/* A4 用紙 */}
+            <div
+              id="a4-preview-content"
+              className="mx-auto bg-white shadow-lg"
+              style={{
+                width: '210mm',
+                minHeight: '297mm',
+                padding: '20mm',
+                fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif',
+                fontSize: '12px',
+                lineHeight: 1.6,
+                color: '#1a1a1a',
+              }}
+            >
+              {sortedBlocks.map((block) => (
+                <BlockRenderer key={block.id} block={block} values={formValues} />
               ))}
 
-              {templateVariables.length === 0 && selectedTemplateId && (
-                <Card>
-                  <CardContent className="py-8 text-center">
-                    <p className="text-sm text-gray-500">
-                      このテンプレートには入力項目がありません。
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {!selectedTemplateId && (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <p className="text-sm text-gray-400">
-                      テンプレートを選択すると入力フォームが表示されます
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* 提出前チェックリスト */}
-              {templateVariables.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold text-gray-700">
-                      提出前チェックリスト
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2.5">
-                    {PRE_SUBMIT_CHECKLIST.map((item) => (
-                      <label
-                        key={item.key}
-                        className="flex items-start gap-2.5 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checklist[item.key] ?? false}
-                          onChange={(e) =>
-                            setChecklist((prev) => ({
-                              ...prev,
-                              [item.key]: e.target.checked,
-                            }))
-                          }
-                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-700">{item.label}</span>
-                      </label>
-                    ))}
-                  </CardContent>
-                </Card>
+              {/* ブロックがない場合、body_template からフォールバック表示 */}
+              {sortedBlocks.length === 0 && template.body_template && (
+                <div className="whitespace-pre-wrap text-sm">
+                  {replaceVars(template.body_template, formValues)}
+                </div>
               )}
             </div>
           </div>
-
-          {/* 右パネル: A4プレビュー (60% = 3/5) */}
-          <div className="col-span-1 lg:col-span-3 overflow-y-auto bg-gray-100 p-6">
-            <div className="mx-auto max-w-3xl">
-              <A4Preview
-                bodyTemplate={bodyTemplate}
-                values={formValues}
-                title={title}
-                watermark="DRAFT"
-                showZoomControls
-              />
-            </div>
-          </div>
         </div>
-      </main>
+      </div>
 
-      {/* フッター（固定） */}
-      <footer className="sticky bottom-0 z-30 border-t bg-white">
-        <div className="flex items-center justify-between px-6 py-3">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="text-gray-500 hover:text-red-600 hover:border-red-300"
-                disabled={isDiscarding}
-              >
-                {isDiscarding ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="mr-2 h-4 w-4" />
-                )}
-                破棄
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>文書を破棄しますか？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  入力内容はすべて削除されます。この操作は元に戻せません。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDiscard}
-                  className="bg-red-600 text-white hover:bg-red-700"
-                >
-                  破棄する
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+      {/* フッター */}
+      <div className="flex items-center justify-between border-t bg-white px-6 py-3">
+        <Link href="/documents/new/select-template">
+          <Button variant="outline" className="text-gray-600">
+            <ChevronLeft className="mr-1.5 h-4 w-4" />
+            テンプレート選択に戻る
+          </Button>
+        </Link>
 
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={saveDraft}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              一時保存
-            </Button>
-
-            <AlertDialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
-              <AlertDialogTrigger asChild>
-                <Button
-                  disabled={isSubmitting || !selectedTemplateId}
-                  onClick={() => {
-                    const errors = validateAllFields()
-                    if (errors.length > 0) return
-                    if (!isChecklistComplete) {
-                      alert('提出前チェックリストをすべて確認してください。')
-                      return
-                    }
-                    setShowSubmitConfirm(true)
-                  }}
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="mr-2 h-4 w-4" />
-                  )}
-                  申請する
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>文書を申請しますか？</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    承認フローに提出されます。提出後は編集できなくなります。
-                    申請を取り下げるには承認者への依頼が必要です。
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleSubmit}>
-                    申請する
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </div>
-      </footer>
-    </div>
-  )
-}
-
-// =============================================================================
-// フィールド入力コンポーネント（LocalTemplate変数対応）
-// =============================================================================
-
-interface FieldInputProps {
-  variable: LocalTemplate['variables'][0]
-  value: string
-  error?: string
-  onChange: (value: string) => void
-  onBlur: () => void
-}
-
-function FieldInput({ variable, value, error, onChange, onBlur }: FieldInputProps) {
-  const { key, label, type, required, options } = variable
-
-  const errorClass = error ? 'border-red-400 focus-visible:ring-red-400' : ''
-
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={key} className="flex items-center gap-1 text-sm">
-        {label}
-        {required && <span className="text-red-500">*</span>}
-      </Label>
-
-      {/* テキスト入力 */}
-      {type === 'text' && (
-        <Input
-          id={key}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          className={errorClass}
-        />
-      )}
-
-      {/* 日付入力 */}
-      {type === 'date' && (
-        <Input
-          id={key}
-          type="date"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          className={errorClass}
-        />
-      )}
-
-      {/* セレクト */}
-      {type === 'select' && options && options.length > 0 && (
-        <Select value={value} onValueChange={(v) => { onChange(v); onBlur() }}>
-          <SelectTrigger id={key} className={errorClass}>
-            <SelectValue placeholder="選択してください" />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {/* エラーメッセージ */}
-      {error && (
-        <p className="text-xs text-red-500">{error}</p>
-      )}
+        <Button onClick={handleGeneratePdf} disabled={isGenerating}>
+          {isGenerating ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <FileDown className="mr-2 h-4 w-4" />
+          )}
+          PDF生成
+        </Button>
+      </div>
     </div>
   )
 }
