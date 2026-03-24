@@ -576,9 +576,11 @@ ${previewEl.innerHTML}
         <div className="w-2/5 overflow-y-auto border-r bg-gray-50/50 p-6">
           <div className="mx-auto max-w-md space-y-5">
             {/* PDF出力情報セクション */}
-            <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-4 space-y-3">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-blue-800">
-                <FileDown className="h-4 w-4" />
+            <div className="rounded-xl border-2 border-blue-200 bg-gradient-to-b from-blue-50 to-blue-50/30 p-5 space-y-4 shadow-sm">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-blue-800">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100">
+                  <FileDown className="h-4 w-4 text-blue-600" />
+                </div>
                 PDF出力情報
               </h2>
 
@@ -744,12 +746,12 @@ ${previewEl.innerHTML}
         </div>
 
         {/* 右パネル: A4 ライブプレビュー (60%) */}
-        <div className="w-3/5 overflow-y-auto bg-gray-200/60 p-6">
+        <div className="w-3/5 overflow-y-auto bg-gradient-to-b from-slate-200/60 to-slate-300/30 p-8">
           <div className="mx-auto" style={{ maxWidth: '210mm' }}>
             {/* A4 用紙 */}
             <div
               id="a4-preview-content"
-              className="mx-auto bg-white shadow-lg"
+              className="mx-auto bg-white a4-paper-shadow rounded-sm"
               style={{
                 width: '210mm',
                 minHeight: '297mm',
@@ -775,8 +777,8 @@ ${previewEl.innerHTML}
         </div>
       </div>
 
-      {/* フッター */}
-      <div className="flex items-center justify-between border-t bg-white px-6 py-3">
+      {/* フッター（スティッキーバー） */}
+      <div className="flex items-center justify-between border-t bg-white px-6 py-3.5 sticky-bar-shadow">
         <Link href="/documents/new/select-template">
           <Button variant="outline" className="text-gray-600">
             <ChevronLeft className="mr-1.5 h-4 w-4" />

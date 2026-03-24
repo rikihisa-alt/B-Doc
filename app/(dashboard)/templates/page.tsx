@@ -49,12 +49,20 @@ const TEMPLATE_STATUS_LABELS: Record<TemplateApprovalStatus, string> = {
   rejected: '差戻し',
 }
 
-/** テンプレート承認ステータスの色 */
+/** テンプレート承認ステータスのバッジ色 */
 const TEMPLATE_STATUS_COLORS: Record<TemplateApprovalStatus, string> = {
   draft: 'border-slate-300 bg-slate-50 text-slate-600',
   pending_approval: 'border-amber-200 bg-amber-50 text-amber-700',
   approved: 'border-green-200 bg-green-50 text-green-700',
   rejected: 'border-red-200 bg-red-50 text-red-700',
+}
+
+/** テンプレートカードの左ボーダー色 */
+const TEMPLATE_CARD_BORDER: Record<TemplateApprovalStatus, string> = {
+  draft: 'border-l-slate-300',
+  pending_approval: 'border-l-amber-400',
+  approved: 'border-l-green-500',
+  rejected: 'border-l-red-400',
 }
 
 /** テンプレート承認ステータスのアイコン */
@@ -285,21 +293,21 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">テンプレート管理</h1>
           <p className="mt-1 text-sm text-slate-500">
             文書テンプレートの作成・承認・管理を行います
-            <span className="ml-2 inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+            <span className="ml-2 inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200/80">
               {USER_ROLE_TYPE_LABELS[userRole]}
             </span>
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="gap-2 shadow-sm">
           <Link href="/templates/new">
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             新規テンプレート
           </Link>
         </Button>
@@ -391,7 +399,7 @@ export default function TemplatesPage() {
           {templates.map((template) => {
             const status = getStatus(template)
             return (
-              <Card key={template.id} className="group overflow-hidden transition-shadow hover:shadow-md">
+              <Card key={template.id} className={`group overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-l-4 ${TEMPLATE_CARD_BORDER[status]}`}>
                 {/* ミニプレビュー */}
                 <div className="relative h-32 border-b border-slate-100 bg-slate-50">
                   <TemplateMiniPreview template={template} />
@@ -518,13 +526,18 @@ export default function TemplatesPage() {
           })}
         </div>
       ) : (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center gap-3 py-16">
-            <FileText className="h-10 w-10 text-slate-300" />
-            <p className="text-sm text-slate-500">テンプレートがありません</p>
-            <Button asChild>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center gap-4 py-20">
+            <div className="rounded-2xl bg-slate-100 p-5">
+              <FileText className="h-12 w-12 text-slate-300 empty-state-icon" />
+            </div>
+            <div className="text-center">
+              <p className="text-base font-medium text-slate-600">テンプレートがありません</p>
+              <p className="mt-1 text-sm text-slate-400">最初のテンプレートを作成して文書発行を始めましょう</p>
+            </div>
+            <Button asChild className="mt-2 gap-2 shadow-sm">
               <Link href="/templates/new">
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="h-4 w-4" />
                 最初のテンプレートを作成
               </Link>
             </Button>

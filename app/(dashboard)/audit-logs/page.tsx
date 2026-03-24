@@ -129,22 +129,27 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Shield className="h-6 w-6 text-blue-600" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+            <Shield className="h-5 w-5 text-blue-600" />
+          </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">監査ログ</h1>
             <p className="text-sm text-slate-500">
               システムの全操作履歴を記録・閲覧
+              <span className="ml-2 inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 tabular-nums">
+                {totalCount.toLocaleString('ja-JP')}件
+              </span>
             </p>
           </div>
         </div>
         <button
           type="button"
           onClick={handleCsvExport}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-50 hover:shadow-md"
         >
           <Download className="h-4 w-4" />
           CSV エクスポート

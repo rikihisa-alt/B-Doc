@@ -1134,9 +1134,9 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
 function A4Preview({ blocks, seals }: { blocks: TemplateBlock[]; seals: LocalSeal[] }) {
   return (
     <div className="flex flex-col items-center">
-      <div className="mb-2 text-xs font-medium text-slate-500">A4プレビュー</div>
+      <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">A4プレビュー</div>
       <div
-        className="w-full bg-white shadow-lg"
+        className="w-full bg-white a4-paper-shadow rounded-sm"
         style={{
           aspectRatio: '210/297',
           maxWidth: '100%',
@@ -1438,20 +1438,23 @@ export default function TemplateEditPage() {
       {/* 3パネルレイアウト */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左パネル: ブロックパレット */}
-        <div className="w-40 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50 p-2">
-          <div className="mb-2 text-xs font-semibold text-slate-500">ブロック追加</div>
+        <div className="w-44 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/80 p-3">
+          <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">ブロック追加</div>
           <div className="space-y-1">
             {BLOCK_TYPES.map((bt) => (
               <button
                 key={bt.type}
                 onClick={() => addBlock(bt.type)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-slate-700 transition-colors hover:bg-white hover:shadow-sm"
+                className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-all duration-150 hover:bg-white hover:shadow-md hover:-translate-y-px"
                 title={bt.description}
               >
-                <span className="flex h-6 w-6 items-center justify-center rounded bg-white text-slate-500 shadow-sm">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600 group-hover:ring-blue-200">
                   {bt.icon}
                 </span>
-                <span>{bt.label}</span>
+                <div className="min-w-0">
+                  <span className="block font-medium">{bt.label}</span>
+                  <span className="block truncate text-[10px] text-slate-400">{bt.description}</span>
+                </div>
               </button>
             ))}
           </div>
@@ -1468,20 +1471,20 @@ export default function TemplateEditPage() {
                 onDragOver={(e) => handleDragOver(e, idx)}
                 onDrop={() => handleDrop(idx)}
                 onDragEnd={handleDragEnd}
-                className={`group rounded-lg border bg-white shadow-sm transition-all ${
+                className={`group rounded-xl border bg-white shadow-sm transition-all duration-200 ${
                   dragOverIndex === idx && dragIndex !== idx
-                    ? 'border-blue-400 ring-2 ring-blue-100'
+                    ? 'border-blue-400 ring-2 ring-blue-100 shadow-md'
                     : dragIndex === idx
-                    ? 'border-blue-300 opacity-50'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-blue-300 opacity-50 scale-[0.98]'
+                    : 'border-slate-200 hover:border-blue-200 hover:shadow-md'
                 }`}
               >
-                {/* ブロックヘッダー */}
-                <div className="flex items-center gap-1 border-b border-slate-100 px-2 py-1.5">
+                {/* ブロックヘッダー（ブロック種別ラベル付き） */}
+                <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50/50 px-3 py-2">
                   <span className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing" title="ドラッグで移動">
                     <GripVertical className="h-4 w-4" />
                   </span>
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                  <span className="flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/80 shadow-sm">
                     {getBlockTypeIcon(block.type)}
                     {getBlockTypeLabel(block.type)}
                   </span>
@@ -1549,7 +1552,7 @@ export default function TemplateEditPage() {
         </div>
 
         {/* 右パネル: A4プレビュー */}
-        <div className="w-[35%] shrink-0 overflow-y-auto border-l border-slate-200 bg-slate-100 p-4">
+        <div className="w-[35%] shrink-0 overflow-y-auto border-l border-slate-200 bg-gradient-to-b from-slate-100 to-slate-200/50 p-6">
           <A4Preview blocks={sortedBlocks} seals={seals} />
         </div>
       </div>

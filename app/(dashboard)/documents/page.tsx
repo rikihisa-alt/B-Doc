@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Download,
   X,
+  FileText,
 } from 'lucide-react'
 
 // ページあたりの表示件数
@@ -194,20 +195,25 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 animate-fade-in">
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">文書一覧</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">文書一覧</h1>
+          <span className="inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-600 tabular-nums">
+            {totalCount}<span className="ml-0.5 text-xs font-normal text-slate-400">件</span>
+          </span>
+        </div>
         <Link href="/documents/new/select-template">
-          <Button size="sm">
-            <Plus className="mr-1.5 h-4 w-4" />
+          <Button size="sm" className="gap-1.5 shadow-sm">
+            <Plus className="h-4 w-4" />
             新規作成
           </Button>
         </Link>
       </div>
 
       {/* フィルタバー */}
-      <div className="rounded-lg border bg-white p-4">
+      <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/50 p-5 shadow-sm">
         <form onSubmit={handleSearch}>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7">
             {/* 文書番号 */}
@@ -320,11 +326,11 @@ export default function DocumentsPage() {
       </div>
 
       {/* 文書テーブル */}
-      <div className="overflow-hidden rounded-lg border bg-white">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-zebra">
             <thead>
-              <tr className="border-b bg-gray-50/80">
+              <tr className="border-b border-slate-200 bg-slate-50">
                 {/* 文書番号 */}
                 <th className="px-3 py-2.5 text-left">
                   <button
@@ -380,7 +386,7 @@ export default function DocumentsPage() {
                 pageDocuments.map((doc) => (
                   <tr
                     key={doc.id}
-                    className="transition-colors hover:bg-gray-50/60"
+                    className="transition-colors duration-150 hover:bg-blue-50/40 cursor-pointer"
                   >
                     <td className="px-3 py-2.5 font-mono text-xs text-gray-600">
                       {doc.document_number ?? '未採番'}
@@ -422,11 +428,27 @@ export default function DocumentsPage() {
                 <tr>
                   <td
                     colSpan={6}
-                    className="px-4 py-16 text-center text-sm text-gray-400"
+                    className="px-4 py-20 text-center"
                   >
-                    {hasFilters
-                      ? '条件に一致する文書はありません。フィルタを変更してください。'
-                      : '文書がまだありません。'}
+                    <div className="flex flex-col items-center gap-3">
+                      <FileText className="h-12 w-12 text-slate-200 empty-state-icon" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-500">
+                          {hasFilters ? '条件に一致する文書がありません' : '文書がまだありません'}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {hasFilters ? 'フィルタを変更してお試しください' : '新規作成から最初の文書を作成しましょう'}
+                        </p>
+                      </div>
+                      {!hasFilters && (
+                        <Link href="/documents/new/select-template">
+                          <Button size="sm" variant="outline" className="mt-2 gap-1.5">
+                            <Plus className="h-3.5 w-3.5" />
+                            最初の文書を作成
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )}
@@ -436,11 +458,11 @@ export default function DocumentsPage() {
       </div>
 
       {/* ページネーション */}
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm shadow-sm">
         <p className="text-gray-500">
-          全 <span className="font-semibold text-gray-700">{totalCount}</span>
-          件&ensp;
-          {rangeStart}〜{rangeEnd}件表示
+          全 <span className="font-bold text-gray-800">{totalCount}</span>
+          件中&ensp;
+          <span className="font-semibold text-gray-700">{rangeStart}〜{rangeEnd}</span>件表示
         </p>
 
         {totalPages > 1 && (

@@ -222,21 +222,23 @@ function DropdownMenu({ items, visible }: DropdownMenuProps) {
   return (
     <div
       className={cn(
-        'absolute left-0 top-full z-50 min-w-[200px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg',
+        'absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-slate-200/80 bg-white py-1.5 shadow-xl shadow-slate-200/50',
         'transition-all duration-200 ease-out',
         visible
           ? 'pointer-events-auto translate-y-0 opacity-100'
-          : 'pointer-events-none -translate-y-1 opacity-0'
+          : 'pointer-events-none -translate-y-2 opacity-0'
       )}
     >
       {items.map((sub) => (
         <Link
           key={sub.href + sub.label}
           href={sub.href}
-          className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600"
+          className="group flex items-center gap-3 mx-1.5 rounded-lg px-3 py-2.5 text-sm text-slate-600 transition-all duration-150 hover:bg-blue-50 hover:text-blue-700"
         >
-          <sub.icon className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={1.75} />
-          <span>{sub.label}</span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-500 transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
+            <sub.icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+          </span>
+          <span className="font-medium">{sub.label}</span>
         </Link>
       ))}
     </div>
@@ -324,12 +326,12 @@ function NavItemButton({
       <Link
         href={item.href}
         className={cn(
-          'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors rounded-md select-none',
+          'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all duration-200 rounded-md select-none',
           'border-b-2 -mb-[2px]',
           isDragging && 'opacity-40',
           isActive
-            ? 'text-blue-600 border-blue-600'
-            : 'text-slate-600 border-transparent hover:text-slate-900 hover:bg-slate-50'
+            ? 'text-blue-700 border-blue-600 bg-blue-50/70'
+            : 'text-slate-600 border-transparent hover:text-slate-900 hover:bg-slate-100/70'
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -365,10 +367,11 @@ function NavItemButton({
 // ロールバッジの色マップ
 // =============================================================================
 
+/** ロールバッジの色設定（staff=灰, manager=青, admin=紫） */
 const ROLE_BADGE_COLORS: Record<UserRoleType, string> = {
-  staff: 'bg-slate-100 text-slate-600',
-  manager: 'bg-amber-100 text-amber-700',
-  admin: 'bg-red-100 text-red-700',
+  staff: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
+  manager: 'bg-blue-100 text-blue-700 ring-1 ring-blue-200',
+  admin: 'bg-purple-100 text-purple-700 ring-1 ring-purple-200',
 }
 
 // =============================================================================
@@ -601,13 +604,17 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
 
       {/* 右側: 通知ベル + ユーザーメニュー（固定、ドラッグ不可） */}
       <div className="ml-4 flex shrink-0 items-center gap-3">
-        {/* 通知ベル */}
+        {/* 通知ベル（カウントバッジ付き） */}
         <button
           type="button"
-          className="relative rounded-md p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+          className="relative rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-slate-100 hover:text-slate-600 hover:shadow-sm"
           title="通知"
         >
           <Bell className="h-5 w-5" strokeWidth={1.75} />
+          {/* 通知カウントバッジ */}
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-sm">
+            2
+          </span>
         </button>
 
         {/* 区切り線 */}
@@ -628,7 +635,7 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
               {displayName}
             </span>
             <span className={cn(
-              'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium',
+              'inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wide',
               ROLE_BADGE_COLORS[displayRole]
             )}>
               {roleLabel}
@@ -643,7 +650,7 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
 
           {/* ユーザードロップダウンメニュー */}
           {userMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-60 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 top-full z-50 mt-1.5 w-64 rounded-xl border border-slate-200/80 bg-white py-1 shadow-xl shadow-slate-200/50 dropdown-enter">
               {/* ユーザー情報 */}
               <div className="border-b border-slate-100 px-4 py-3">
                 <p className="text-sm font-medium text-slate-700 truncate">

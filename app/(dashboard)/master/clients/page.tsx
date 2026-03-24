@@ -101,35 +101,40 @@ export default function ClientsPage() {
   }, [deleteTarget])
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 animate-fade-in">
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
-        <h1 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-          <Briefcase className="h-5 w-5 text-emerald-600" />
-          取引先管理
-        </h1>
-        <Button size="sm" onClick={() => openDialog()}>
-          <Plus className="mr-1.5 h-4 w-4" />
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50">
+            <Briefcase className="h-5 w-5 text-emerald-600" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">取引先管理</h1>
+            <p className="text-sm text-slate-500">{filtered.length}件のデータ</p>
+          </div>
+        </div>
+        <Button size="sm" onClick={() => openDialog()} className="gap-1.5 shadow-sm">
+          <Plus className="h-4 w-4" />
           新規追加
         </Button>
       </div>
 
       {/* 検索 */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <div className="relative max-w-md">
+        <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <Input
-          placeholder="会社名・担当者名・メールで検索"
+          placeholder="会社名・担当者名・メールで検索..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
+          className="pl-10 rounded-xl"
         />
       </div>
 
       {/* テーブル */}
-      <div className="rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <table className="w-full text-sm table-zebra">
           <thead>
-            <tr className="border-b bg-slate-50">
+            <tr className="border-b border-slate-200 bg-slate-50">
               <th className="px-4 py-2.5 text-left font-medium text-slate-600">会社名</th>
               <th className="px-4 py-2.5 text-left font-medium text-slate-600">担当者</th>
               <th className="hidden px-4 py-2.5 text-left font-medium text-slate-600 sm:table-cell">メール</th>
@@ -141,8 +146,12 @@ export default function ClientsPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                  データがありません
+                <td colSpan={6} className="px-4 py-16 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <Briefcase className="h-10 w-10 text-slate-200 empty-state-icon" />
+                    <p className="text-sm font-medium text-slate-500">データがありません</p>
+                    <p className="text-xs text-slate-400">「新規追加」から最初のデータを登録しましょう</p>
+                  </div>
                 </td>
               </tr>
             ) : (

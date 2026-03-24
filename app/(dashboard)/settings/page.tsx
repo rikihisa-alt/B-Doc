@@ -59,22 +59,28 @@ function CollapsibleSection({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader
-        className="cursor-pointer select-none pb-4"
+        className="cursor-pointer select-none pb-4 transition-colors hover:bg-slate-50/50"
         onClick={() => setOpen((prev) => !prev)}
       >
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <span className={iconColor}>{icon}</span>
+          <CardTitle className="flex items-center gap-3 text-lg font-bold">
+            <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-opacity-10 ${iconColor}`}>
+              {icon}
+            </div>
             {title}
           </CardTitle>
           <ChevronDown
-            className={`h-5 w-5 text-slate-400 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`}
+            className={`h-5 w-5 text-slate-400 transition-transform duration-200 ${open ? 'rotate-0' : '-rotate-90'}`}
           />
         </div>
       </CardHeader>
-      {open && <CardContent>{children}</CardContent>}
+      {open && (
+        <CardContent className="border-t border-slate-100 pt-5">
+          {children}
+        </CardContent>
+      )}
     </Card>
   )
 }
@@ -109,27 +115,29 @@ export default function SettingsPage() {
   if (!settings) return null
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6 animate-fade-in">
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-            <Settings className="h-6 w-6 text-slate-600" />
+          <h1 className="flex items-center gap-2.5 text-2xl font-bold text-slate-900">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100">
+              <Settings className="h-5 w-5 text-slate-600" />
+            </div>
             設定
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1.5 text-sm text-slate-500">
             アカウントと組織の設定を管理します
           </p>
         </div>
-        <Button onClick={handleSave} size="lg">
+        <Button onClick={handleSave} size="lg" className={`gap-2 shadow-sm transition-all duration-200 ${saved ? 'bg-green-600 hover:bg-green-700' : ''}`}>
           {saved ? (
             <>
-              <Check className="mr-1.5 h-4 w-4" />
+              <Check className="h-4 w-4" />
               保存しました
             </>
           ) : (
             <>
-              <Save className="mr-1.5 h-4 w-4" />
+              <Save className="h-4 w-4" />
               設定を保存
             </>
           )}
