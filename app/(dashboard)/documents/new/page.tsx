@@ -28,7 +28,8 @@ import {
   getSettings,
   getCurrentUser,
 } from '@/lib/store'
-import type { LocalTemplate, TemplateBlock, LocalSeal, LocalSettings } from '@/lib/store'
+import type { LocalTemplate, TemplateBlock, LocalSeal, LocalSettings, PageSize } from '@/lib/store'
+import { PAGE_SIZE_DIMENSIONS } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft,
@@ -519,8 +520,17 @@ export default function NewDocumentPage() {
 <title>${finalTitle}</title>
 <style>
   @page {
-    size: A4;
-    margin: 20mm;
+    size: ${(() => {
+      const ps = template.pageSize ?? 'A4'
+      const dims = PAGE_SIZE_DIMENSIONS[ps] ?? PAGE_SIZE_DIMENSIONS.A4
+      const w = template.pageOrientation === 'landscape' ? dims.height : dims.width
+      const h = template.pageOrientation === 'landscape' ? dims.width : dims.height
+      return `${w}mm ${h}mm`
+    })()};
+    margin: ${(() => {
+      const m = template.pageMargin ?? { top: 20, bottom: 20, left: 20, right: 20 }
+      return `${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm`
+    })()};
     @top-left { content: "${finalTitle}"; font-size: 9px; color: #888; }
     @top-right { content: "作成者: ${creatorName.trim()}"; font-size: 9px; color: #888; }
     @bottom-center { content: counter(page) " / " counter(pages); font-size: 9px; color: #888; }
@@ -989,17 +999,44 @@ ${previewEl.innerHTML}
           </div>
         </div>
 
-        {/* 右パネル: A4 ライブプレビュー (60%) */}
+        {/* 右パネル: ライブプレビュー (60%) */}
         <div className="w-3/5 overflow-y-auto bg-gradient-to-b from-slate-200/60 to-slate-300/30 p-8">
-          <div className="mx-auto" style={{ maxWidth: '210mm' }}>
-            {/* A4 用紙 */}
+          {/* ページサイズ表示 */}
+          {template && (
+            <div className="mb-2 text-center text-[10px] text-slate-400">
+              {template.pageSize ?? 'A4'} {template.pageOrientation === 'landscape' ? '横' : '縦'}
+              {' '}
+              {(() => {
+                const dims = PAGE_SIZE_DIMENSIONS[template.pageSize ?? 'A4']
+                return template.pageOrientation === 'landscape'
+                  ? `${dims.height}×${dims.width}mm`
+                  : `${dims.width}×${dims.height}mm`
+              })()}
+            </div>
+          )}
+          <div className="mx-auto" style={{ maxWidth: (() => {
+            const ps = template?.pageSize ?? 'A4'
+            const dims = PAGE_SIZE_DIMENSIONS[ps] ?? PAGE_SIZE_DIMENSIONS.A4
+            return template?.pageOrientation === 'landscape' ? `${dims.height}mm` : `${dims.width}mm`
+          })() }}>
             <div
               id="a4-preview-content"
               className="mx-auto bg-white a4-paper-shadow rounded-sm"
               style={{
-                width: '210mm',
-                minHeight: '297mm',
-                padding: '20mm',
+                width: (() => {
+                  const ps = template?.pageSize ?? 'A4'
+                  const dims = PAGE_SIZE_DIMENSIONS[ps] ?? PAGE_SIZE_DIMENSIONS.A4
+                  return template?.pageOrientation === 'landscape' ? `${dims.height}mm` : `${dims.width}mm`
+                })(),
+                minHeight: (() => {
+                  const ps = template?.pageSize ?? 'A4'
+                  const dims = PAGE_SIZE_DIMENSIONS[ps] ?? PAGE_SIZE_DIMENSIONS.A4
+                  return template?.pageOrientation === 'landscape' ? `${dims.width}mm` : `${dims.height}mm`
+                })(),
+                padding: (() => {
+                  const m = template?.pageMargin ?? { top: 20, bottom: 20, left: 20, right: 20 }
+                  return `${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm`
+                })(),
                 fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif',
                 fontSize: '12px',
                 lineHeight: 1.6,

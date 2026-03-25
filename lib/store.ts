@@ -437,6 +437,43 @@ export interface LocalTemplate {
   approved_at?: string
   /** 差戻し理由 */
   rejection_reason?: string
+  /** 用紙サイズ */
+  pageSize?: PageSize
+  /** 用紙方向 */
+  pageOrientation?: 'portrait' | 'landscape'
+  /** ページ余白 (mm) */
+  pageMargin?: { top: number; bottom: number; left: number; right: number }
+}
+
+/** 用紙サイズ定義 */
+export type PageSize = 'A3' | 'A4' | 'A5' | 'A6' | 'B4' | 'B5' | 'letter' | 'legal' | 'hagaki'
+
+/** 用紙サイズの寸法 (mm) */
+export const PAGE_SIZE_DIMENSIONS: Record<PageSize, { width: number; height: number; label: string }> = {
+  A3: { width: 297, height: 420, label: 'A3 (297×420mm)' },
+  A4: { width: 210, height: 297, label: 'A4 (210×297mm)' },
+  A5: { width: 148, height: 210, label: 'A5 (148×210mm)' },
+  A6: { width: 105, height: 148, label: 'A6 (105×148mm)' },
+  B4: { width: 257, height: 364, label: 'B4 (257×364mm)' },
+  B5: { width: 182, height: 257, label: 'B5 (182×257mm)' },
+  letter: { width: 216, height: 279, label: 'レター (216×279mm)' },
+  legal: { width: 216, height: 356, label: 'リーガル (216×356mm)' },
+  hagaki: { width: 100, height: 148, label: 'はがき (100×148mm)' },
+}
+
+/** テンプレートの実際のページ寸法を取得 */
+export function getPageDimensions(template: LocalTemplate): { width: number; height: number } {
+  const size = template.pageSize ?? 'A4'
+  const dims = PAGE_SIZE_DIMENSIONS[size]
+  if (template.pageOrientation === 'landscape') {
+    return { width: dims.height, height: dims.width }
+  }
+  return { width: dims.width, height: dims.height }
+}
+
+/** テンプレートのページ余白を取得 */
+export function getPageMargins(template: LocalTemplate): { top: number; bottom: number; left: number; right: number } {
+  return template.pageMargin ?? { top: 20, bottom: 20, left: 20, right: 20 }
 }
 
 const INITIAL_TEMPLATES: LocalTemplate[] = [

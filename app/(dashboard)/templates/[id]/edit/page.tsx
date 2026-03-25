@@ -18,12 +18,14 @@ import {
   getTemplate,
   saveTemplate,
   getSeals,
+  PAGE_SIZE_DIMENSIONS,
 } from '@/lib/store'
 import type {
   LocalTemplate,
   LocalSeal,
   TemplateBlock,
   TemplateBlockType,
+  PageSize,
 } from '@/lib/store'
 import {
   Heading1,
@@ -1558,16 +1560,30 @@ function A4BlockPreview({ block, seals }: { block: TemplateBlock; seals: LocalSe
   }
 }
 
-function A4Preview({ blocks, seals }: { blocks: TemplateBlock[]; seals: LocalSeal[] }) {
+function PagePreview({ blocks, seals, pageSize, pageOrientation, pageMargin }: {
+  blocks: TemplateBlock[]
+  seals: LocalSeal[]
+  pageSize: PageSize
+  pageOrientation: 'portrait' | 'landscape'
+  pageMargin: { top: number; bottom: number; left: number; right: number }
+}) {
+  const dims = PAGE_SIZE_DIMENSIONS[pageSize]
+  const w = pageOrientation === 'landscape' ? dims.height : dims.width
+  const h = pageOrientation === 'landscape' ? dims.width : dims.height
   return (
     <div className="flex flex-col items-center">
-      <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">A4プレビュー</div>
+      <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
+        {pageSize} {pageOrientation === 'landscape' ? '横' : '縦'} プレビュー
+      </div>
       <div
         className="w-full bg-white a4-paper-shadow rounded-sm"
         style={{
-          aspectRatio: '210/297',
+          aspectRatio: `${w}/${h}`,
           maxWidth: '100%',
-          padding: '6% 8%',
+          paddingTop: `${(pageMargin.top / h) * 100}%`,
+          paddingBottom: `${(pageMargin.bottom / h) * 100}%`,
+          paddingLeft: `${(pageMargin.left / w) * 100}%`,
+          paddingRight: `${(pageMargin.right / w) * 100}%`,
           overflow: 'hidden',
           border: '1px solid #e2e8f0',
         }}
@@ -1608,6 +1624,9 @@ export default function TemplateEditPage() {
   const [templateName, setTemplateName] = useState('')
   const [templateDescription, setTemplateDescription] = useState('')
   const [templateDocType, setTemplateDocType] = useState('employment_cert')
+  const [pageSize, setPageSize] = useState<import('@/lib/store').PageSize>('A4')
+  const [pageOrientation, setPageOrientation] = useState<'portrait' | 'landscape'>('portrait')
+  const [pageMargin, setPageMargin] = useState({ top: 20, bottom: 20, left: 20, right: 20 })
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -1648,6 +1667,9 @@ export default function TemplateEditPage() {
       setTemplateName(tpl.name)
       setTemplateDescription(tpl.description)
       setTemplateDocType(tpl.document_type)
+      if (tpl.pageSize) setPageSize(tpl.pageSize)
+      if (tpl.pageOrientation) setPageOrientation(tpl.pageOrientation)
+      if (tpl.pageMargin) setPageMargin(tpl.pageMargin)
     }
     setSeals(getSeals())
     setLoaded(true)
@@ -1816,6 +1838,9 @@ export default function TemplateEditPage() {
         variables,
         body_template,
         blocks: blocks.sort((a, b) => a.order - b.order).map((b, i) => ({ ...b, order: i })),
+        pageSize,
+        pageOrientation,
+        pageMargin,
       }
       saveTemplate(updated)
       setTemplate(updated)
@@ -1989,6 +2014,60 @@ export default function TemplateEditPage() {
         </div>
       </div>
 
+      {/* ページ設定バー */}
+      <div className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-slate-50/60 px-4 py-1.5">
+        <div className="flex items-center gap-1.5">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">用紙</Label>
+          <select
+            className="rounded border border-slate-300 px-2 py-1 text-xs"
+            value={pageSize}
+            onChange={(e) => setPageSize(e.target.value as PageSize)}
+          >
+            {(Object.entries(PAGE_SIZE_DIMENSIONS) as [PageSize, { label: string }][]).map(([key, val]) => (
+              <option key={key} value={key}>{val.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">向き</Label>
+          <div className="flex rounded-md border border-slate-300 text-xs">
+            <button
+              className={`px-2.5 py-1 ${pageOrientation === 'portrait' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'} rounded-l-md transition-colors`}
+              onClick={() => setPageOrientation('portrait')}
+            >縦</button>
+            <button
+              className={`px-2.5 py-1 ${pageOrientation === 'landscape' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'} rounded-r-md transition-colors`}
+              onClick={() => setPageOrientation('landscape')}
+            >横</button>
+          </div>
+        </div>
+        <div className="h-4 w-px bg-slate-300" />
+        <div className="flex items-center gap-1.5">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">余白(mm)</Label>
+          {(['top', 'bottom', 'left', 'right'] as const).map((side) => (
+            <div key={side} className="flex items-center gap-0.5">
+              <span className="text-[9px] text-slate-400">{side === 'top' ? '上' : side === 'bottom' ? '下' : side === 'left' ? '左' : '右'}</span>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={pageMargin[side]}
+                onChange={(e) => setPageMargin((prev) => ({ ...prev, [side]: Number(e.target.value) || 0 }))}
+                className="w-10 rounded border border-slate-300 px-1 py-0.5 text-center text-[10px]"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="ml-auto text-[10px] text-slate-400">
+          {(() => {
+            const dims = PAGE_SIZE_DIMENSIONS[pageSize]
+            return pageOrientation === 'landscape'
+              ? `${dims.height}×${dims.width}mm`
+              : `${dims.width}×${dims.height}mm`
+          })()}
+        </div>
+      </div>
+
       {/* 3パネルレイアウト */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左パネル: ブロックパレット（カテゴリ分類） */}
@@ -2124,7 +2203,7 @@ export default function TemplateEditPage() {
 
         {/* 右パネル: A4プレビュー */}
         <div className="w-[35%] shrink-0 overflow-y-auto border-l border-slate-200 bg-gradient-to-b from-slate-100 to-slate-200/50 p-6">
-          <A4Preview blocks={sortedBlocks} seals={seals} />
+          <PagePreview blocks={sortedBlocks} seals={seals} pageSize={pageSize} pageOrientation={pageOrientation} pageMargin={pageMargin} />
         </div>
       </div>
 
