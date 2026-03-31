@@ -337,6 +337,23 @@ export type TemplateBlockType =
   | 'list'           // リスト（箇条書き・番号付き）
   | 'two_column'     // 2カラムレイアウト
   | 'horizontal_items' // 横並び項目（キー:値のペア）
+  | 'header'          // ヘッダー（全ページ共通）
+  | 'footer'          // フッター（全ページ共通）
+
+/** リッチテキストセグメント（テキスト内の部分書式） */
+export interface RichTextSegment {
+  text: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  strikethrough?: boolean
+  color?: string
+  fontSize?: number
+  fontFamily?: string
+  superscript?: boolean
+  subscript?: boolean
+  linkUrl?: string
+}
 
 /** テンプレートブロックの定義 */
 export interface TemplateBlock {
@@ -405,6 +422,32 @@ export interface TemplateBlock {
   columnRightContent?: string
   // 横並び項目
   horizontalItems?: { label: string; value: string }[]
+  // リッチテキスト: ブロック内で部分的に異なる書式を持つセグメント
+  richSegments?: RichTextSegment[]
+  // 取消線
+  strikethrough?: boolean
+  // 上付き・下付き
+  superscript?: boolean
+  subscript?: boolean
+  // リンクURL
+  linkUrl?: string
+  // 最初の行インデント (mm)
+  firstLineIndent?: number
+  // 表のセル結合情報
+  tableMergedCells?: { row: number; col: number; rowSpan: number; colSpan: number }[]
+  // ヘッダー・フッター用テキスト
+  headerText?: string
+  footerText?: string
+  // 段組み数（1-3）
+  columnCount?: number
+  // 表ヘッダー行の有効/無効
+  tableHeaderRow?: boolean
+  // 表の罫線スタイル
+  tableBorderStyle?: 'all' | 'outside' | 'horizontal' | 'none'
+  // 表の列揃え
+  tableColumnAligns?: ('left' | 'center' | 'right')[]
+  // リストのネストレベル（各項目のインデントレベル）
+  listItemLevels?: number[]
 }
 
 // ============================================================
