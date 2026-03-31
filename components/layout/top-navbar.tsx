@@ -223,23 +223,21 @@ function DropdownMenu({ items, visible }: DropdownMenuProps) {
   return (
     <div
       className={cn(
-        'absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-slate-200/80 bg-white py-1.5 shadow-xl shadow-slate-200/50',
-        'transition-all duration-200 ease-out',
+        'absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-sm border border-gray-200 bg-white py-1',
+        'transition-all duration-150 ease-out shadow-sm',
         visible
           ? 'pointer-events-auto translate-y-0 opacity-100'
-          : 'pointer-events-none -translate-y-2 opacity-0'
+          : 'pointer-events-none -translate-y-1 opacity-0'
       )}
     >
       {items.map((sub) => (
         <Link
           key={sub.href + sub.label}
           href={sub.href}
-          className="group flex items-center gap-3 mx-1.5 rounded-lg px-3 py-2.5 text-sm text-slate-600 transition-all duration-150 hover:bg-blue-50 hover:text-blue-700"
+          className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-500 transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
-            <sub.icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-          </span>
-          <span className="font-medium">{sub.label}</span>
+          <sub.icon className="h-3.5 w-3.5 shrink-0 text-gray-400" strokeWidth={1.75} />
+          <span>{sub.label}</span>
         </Link>
       ))}
     </div>
@@ -331,8 +329,8 @@ function NavItemButton({
           'border-b-2 -mb-[2px]',
           isDragging && 'opacity-40',
           isActive
-            ? 'text-blue-700 border-blue-600 bg-blue-50/70'
-            : 'text-slate-600 border-transparent hover:text-slate-900 hover:bg-slate-100/70'
+            ? 'text-gray-900 border-gray-900 bg-transparent'
+            : 'text-gray-500 border-transparent hover:text-gray-900 hover:bg-gray-100/70'
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -368,11 +366,11 @@ function NavItemButton({
 // ロールバッジの色マップ
 // =============================================================================
 
-/** ロールバッジの色設定（staff=灰, manager=青, admin=紫） */
+/** ロールバッジの色設定（モノトーン） */
 const ROLE_BADGE_COLORS: Record<UserRoleType, string> = {
-  staff: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
-  manager: 'bg-blue-100 text-blue-700 ring-1 ring-blue-200',
-  admin: 'bg-purple-100 text-purple-700 ring-1 ring-purple-200',
+  staff: 'border border-gray-200 text-gray-500',
+  manager: 'border border-gray-400 text-gray-700',
+  admin: 'border border-gray-900 text-gray-900',
 }
 
 // =============================================================================
@@ -442,12 +440,12 @@ function MobileBottomTabBar({ pathname }: { pathname: string }) {
                 className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-1 transition-colors"
               >
                 <tab.icon
-                  className={cn('h-5 w-5', active ? 'text-blue-600' : 'text-slate-400')}
+                  className={cn('h-5 w-5', active ? 'text-gray-900' : 'text-gray-400')}
                   strokeWidth={active ? 2.25 : 1.75}
                 />
-                {/* アクティブインジケーター（青いドット） */}
+                {/* アクティブインジケーター */}
                 {active && (
-                  <div className="h-1 w-1 rounded-full bg-blue-600" />
+                  <div className="h-1 w-1 rounded-full bg-gray-900" />
                 )}
               </Link>
             )
@@ -471,18 +469,16 @@ function MobileBottomTabBar({ pathname }: { pathname: string }) {
             </div>
             <div className="px-4 pb-4">
               <h3 className="mb-3 text-sm font-semibold text-slate-500">メニュー</h3>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {MORE_MENU_ITEMS.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
                     onClick={() => setShowMoreSheet(false)}
-                    className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 transition-colors active:bg-blue-50"
+                    className="flex min-h-[44px] items-center gap-3 px-2 py-2.5 text-sm text-gray-700 transition-colors active:bg-gray-50"
                   >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                      <item.icon className="h-4 w-4" strokeWidth={1.75} />
-                    </span>
-                    <span className="font-medium">{item.label}</span>
+                    <item.icon className="h-4 w-4 text-gray-400" strokeWidth={1.75} />
+                    <span>{item.label}</span>
                   </Link>
                 ))}
               </div>
@@ -733,12 +729,12 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
         {/* 通知ベル（カウントバッジ付き） */}
         <button
           type="button"
-          className="relative rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-slate-100 hover:text-slate-600 hover:shadow-sm"
+          className="relative rounded-sm p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
           title="通知"
         >
-          <Bell className="h-5 w-5" strokeWidth={1.75} />
+          <Bell className="h-4 w-4" strokeWidth={1.75} />
           {/* 通知カウントバッジ */}
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-sm">
+          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-gray-900 px-1 text-[9px] font-bold text-white">
             2
           </span>
         </button>
@@ -754,7 +750,7 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
             className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
           >
             {/* ユーザーアバター */}
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
               {displayName.charAt(0)}
             </div>
             <span className="text-slate-700 font-medium text-sm">
@@ -776,39 +772,39 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
 
           {/* ユーザードロップダウンメニュー */}
           {userMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1.5 w-64 rounded-xl border border-slate-200/80 bg-white py-1 shadow-xl shadow-slate-200/50 dropdown-enter">
+            <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-sm border border-gray-200 bg-white py-1 shadow-sm dropdown-enter">
               {/* ユーザー情報 */}
-              <div className="border-b border-slate-100 px-4 py-3">
-                <p className="text-sm font-medium text-slate-700 truncate">
+              <div className="border-b border-gray-100 px-3 py-2.5">
+                <p className="text-sm font-medium text-gray-800 truncate">
                   {displayName}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-gray-400 mt-0.5">
                   {currentUser?.department ?? '総務部'} / {roleLabel}
                 </p>
               </div>
 
               {/* ロール切替セクション */}
-              <div className="border-b border-slate-100 px-4 py-3">
-                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  <UserCog className="h-3.5 w-3.5" />
+              <div className="border-b border-gray-100 px-3 py-2">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                  <UserCog className="h-3 w-3" />
                   ロール切替
                 </p>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-0.5">
                   {(Object.entries(USER_ROLE_TYPE_LABELS) as [UserRoleType, string][]).map(([role, label]) => (
                     <button
                       key={role}
                       type="button"
                       onClick={() => handleRoleChange(role)}
                       className={cn(
-                        'flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
+                        'flex items-center justify-between rounded-sm px-2 py-1.5 text-sm transition-colors',
                         displayRole === role
-                          ? 'bg-blue-50 text-blue-700 font-medium'
-                          : 'text-slate-600 hover:bg-slate-50'
+                          ? 'bg-gray-100 text-gray-900 font-medium'
+                          : 'text-gray-600 hover:bg-gray-50'
                       )}
                     >
                       <span>{label}</span>
                       {displayRole === role && (
-                        <span className="text-[10px] rounded bg-blue-100 px-1.5 py-0.5 text-blue-600">
+                        <span className="text-[10px] border border-gray-300 rounded-sm px-1.5 py-0.5 text-gray-500">
                           現在
                         </span>
                       )}
@@ -821,7 +817,7 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-600 transition-colors hover:bg-slate-50 hover:text-red-600"
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
               >
                 <LogOut className="h-4 w-4" />
                 ログアウト

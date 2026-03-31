@@ -5,25 +5,25 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 0 0% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 0 0% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89%;
+    --input: 0 0% 89%;
+    --ring: 0 0% 9%;
+    --radius: 0.25rem;
   }
 }
 
@@ -76,22 +76,22 @@
 /* フォーカスリングの一貫性 */
 @layer base {
   *:focus-visible {
-    @apply outline-none ring-2 ring-blue-500/40 ring-offset-1;
+    @apply outline-none ring-2 ring-gray-900/30 ring-offset-1;
   }
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible {
-    @apply ring-2 ring-blue-500/30 ring-offset-0;
+    @apply ring-2 ring-gray-900/20 ring-offset-0;
   }
 }
 
 /* カード共通ホバー効果 */
 @layer components {
   .card-hover {
-    @apply transition-all duration-200 ease-out;
+    @apply transition-colors duration-150;
   }
   .card-hover:hover {
-    @apply shadow-md -translate-y-0.5;
+    @apply bg-gray-50;
   }
 }
 
@@ -158,13 +158,13 @@
 /* テーブルのゼブラストライピング */
 @layer components {
   .table-zebra tbody tr:nth-child(even) {
-    @apply bg-slate-50/50;
+    @apply bg-gray-50/50;
   }
   .table-zebra tbody tr {
     @apply transition-colors duration-150;
   }
   .table-zebra tbody tr:hover {
-    @apply bg-blue-50/40;
+    @apply bg-gray-50;
   }
 }
 
@@ -283,12 +283,12 @@
 /* モバイル用フローティングアクションボタン */
 @layer components {
   .mobile-fab {
-    @apply fixed z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg;
+    @apply fixed z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gray-900 text-white shadow-lg;
     bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
     right: 1rem;
   }
   .mobile-fab:active {
-    @apply bg-blue-700 scale-95;
+    @apply bg-gray-800 scale-95;
   }
 }
 

@@ -7,17 +7,17 @@ import { cn } from '@/lib/utils'
 
 /** ステータスごとのバッジ表示情報 */
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  draft:            { label: '下書き',       className: 'bg-gray-100 text-gray-700 border border-gray-300' },
-  pending_confirm:  { label: '確認待ち',     className: 'bg-amber-50 text-amber-700 border border-amber-300' },
-  returned:         { label: '差戻し',       className: 'bg-red-50 text-red-700 border border-red-400 font-semibold' },
-  pending_approval: { label: '承認待ち',     className: 'bg-blue-50 text-blue-700 border border-blue-300' },
-  approved:         { label: '承認済み',     className: 'bg-emerald-50 text-emerald-700 border border-emerald-300' },
-  issuing:          { label: '発行準備中',   className: 'bg-violet-50 text-violet-700 border border-violet-300' },
-  issued:           { label: '発行済み',     className: 'bg-emerald-600 text-white' },
-  sent:             { label: '送付済み',     className: 'bg-teal-600 text-white' },
-  cancelled:        { label: '取消',         className: 'bg-red-700 text-white' },
-  expired:          { label: '失効',         className: 'bg-gray-500 text-white' },
-  superseded:       { label: '差替済み',     className: 'bg-gray-400 text-white' },
+  draft:            { label: '下書き',       className: 'bg-transparent text-gray-500 border border-gray-300' },
+  pending_confirm:  { label: '確認待ち',     className: 'bg-transparent text-gray-700 border border-gray-400' },
+  returned:         { label: '差戻し',       className: 'bg-gray-900 text-white border border-gray-900' },
+  pending_approval: { label: '承認待ち',     className: 'bg-transparent text-gray-700 border border-gray-600' },
+  approved:         { label: '承認済み',     className: 'bg-transparent text-gray-700 border border-gray-500' },
+  issuing:          { label: '発行準備中',   className: 'bg-transparent text-gray-600 border border-gray-400' },
+  issued:           { label: '発行済み',     className: 'bg-gray-900 text-white border border-gray-900' },
+  sent:             { label: '送付済み',     className: 'bg-gray-700 text-white border border-gray-700' },
+  cancelled:        { label: '取消',         className: 'bg-transparent text-gray-400 border border-gray-300 line-through' },
+  expired:          { label: '失効',         className: 'bg-transparent text-gray-400 border border-gray-300' },
+  superseded:       { label: '差替済み',     className: 'bg-transparent text-gray-400 border border-gray-300' },
 }
 
 interface StatusBadgeProps {
@@ -41,8 +41,8 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     return (
       <span
         className={cn(
-          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-          'bg-gray-100 text-gray-600 border border-gray-300',
+          'inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium',
+          'bg-transparent text-gray-500 border border-gray-300',
           className,
         )}
       >
@@ -54,7 +54,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+        'inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium',
         badge.className,
         className,
       )}
