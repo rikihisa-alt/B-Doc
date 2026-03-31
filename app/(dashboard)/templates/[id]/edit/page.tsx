@@ -68,6 +68,9 @@ import {
   Redo2,
   Keyboard,
   Trash2,
+  Eye,
+  Blocks as BlocksIcon,
+  Pencil as PencilIcon,
 } from 'lucide-react'
 
 // ============================================================
@@ -1633,6 +1636,9 @@ export default function TemplateEditPage() {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
 
+  /** モバイル用アクティブパネル: 'blocks' | 'edit' | 'preview' */
+  const [mobilePanel, setMobilePanel] = useState<'blocks' | 'edit' | 'preview'>('edit')
+
   // ドラッグ&ドロップ用
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -1927,25 +1933,27 @@ export default function TemplateEditPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col">
+    <div className="flex h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] flex-col">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Link href="/templates" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
+      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 md:px-4 py-2 md:py-3">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+          <Link href="/templates" className="flex shrink-0 items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
             <ChevronLeft className="h-4 w-4" />
-            一覧
+            <span className="hidden md:inline">一覧</span>
           </Link>
-          <div className="h-5 w-px bg-slate-300" />
+          <div className="hidden md:block h-5 w-px bg-slate-300" />
           <Input
             value={templateName}
             onChange={(e) => setTemplateName(e.target.value)}
-            className="h-8 w-60 border-transparent bg-transparent text-base font-bold hover:border-slate-300 focus:border-blue-400"
+            className="h-8 w-32 md:w-60 border-transparent bg-transparent text-sm md:text-base font-bold hover:border-slate-300 focus:border-blue-400"
           />
-          <Badge variant="secondary" className="text-xs">v{template.version}</Badge>
-          <Badge variant="outline" className="text-xs">{blocks.length}ブロック</Badge>
-          <Badge variant="outline" className="text-xs">{variableCount}変数</Badge>
+          <div className="hidden md:flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">v{template.version}</Badge>
+            <Badge variant="outline" className="text-xs">{blocks.length}ブロック</Badge>
+            <Badge variant="outline" className="text-xs">{variableCount}変数</Badge>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 md:gap-2">
           {/* Undo/Redo ボタン */}
           <button onClick={handleUndo} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="元に戻す (Ctrl+Z)">
             <Undo2 className="h-4 w-4" />
@@ -1953,9 +1961,9 @@ export default function TemplateEditPage() {
           <button onClick={handleRedo} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="やり直し (Ctrl+Shift+Z)">
             <Redo2 className="h-4 w-4" />
           </button>
-          <div className="h-5 w-px bg-slate-300" />
-          {/* ショートカット表示トグル */}
-          <div className="relative">
+          <div className="hidden md:block h-5 w-px bg-slate-300" />
+          {/* ショートカット表示トグル - デスクトップのみ */}
+          <div className="relative hidden md:block">
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
               className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -1975,16 +1983,16 @@ export default function TemplateEditPage() {
               </div>
             )}
           </div>
-          {saved && <span className="text-sm text-green-600">保存しました</span>}
-          <Button onClick={handleSave} disabled={saving} size="sm">
-            <Save className="mr-1.5 h-4 w-4" />
-            {saving ? '保存中...' : '保存'}
+          {saved && <span className="text-xs md:text-sm text-green-600">保存済</span>}
+          <Button onClick={handleSave} disabled={saving} size="sm" className="h-8 text-xs md:text-sm">
+            <Save className="mr-1 md:mr-1.5 h-4 w-4" />
+            {saving ? '...' : '保存'}
           </Button>
         </div>
       </div>
 
-      {/* テンプレート基本情報バー */}
-      <div className="flex items-center gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2">
+      {/* テンプレート基本情報バー - モバイルでは非表示 */}
+      <div className="hidden md:flex items-center gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2">
         <div className="flex items-center gap-2">
           <Label className="text-xs text-slate-500">文書種別</Label>
           <select
@@ -2014,8 +2022,8 @@ export default function TemplateEditPage() {
         </div>
       </div>
 
-      {/* ページ設定バー */}
-      <div className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-slate-50/60 px-4 py-1.5">
+      {/* ページ設定バー - モバイルでは非表示 */}
+      <div className="hidden md:flex flex-wrap items-center gap-4 border-b border-slate-200 bg-slate-50/60 px-4 py-1.5">
         <div className="flex items-center gap-1.5">
           <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">用紙</Label>
           <select
@@ -2068,10 +2076,32 @@ export default function TemplateEditPage() {
         </div>
       </div>
 
-      {/* 3パネルレイアウト */}
+      {/* モバイル用パネル切替タブ */}
+      <div className="flex md:hidden border-b border-slate-200 bg-white">
+        {([
+          { id: 'blocks' as const, label: 'ブロック追加', icon: BlocksIcon },
+          { id: 'edit' as const, label: '編集', icon: PencilIcon },
+          { id: 'preview' as const, label: 'プレビュー', icon: Eye },
+        ]).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setMobilePanel(tab.id)}
+            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+              mobilePanel === tab.id
+                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                : 'text-slate-500'
+            }`}
+          >
+            <tab.icon className="h-4 w-4" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 3パネルレイアウト（デスクトップ）/ 単一パネル（モバイル） */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左パネル: ブロックパレット（カテゴリ分類） */}
-        <div className="w-44 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/80 p-3">
+        <div className={`${mobilePanel === 'blocks' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-44 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/80 p-3`}>
           {BLOCK_CATEGORIES.map((category) => {
             const typesInCategory = BLOCK_TYPES.filter((bt) => bt.category === category)
             return (
@@ -2105,7 +2135,7 @@ export default function TemplateEditPage() {
         </div>
 
         {/* 中央パネル: メイン編集エリア */}
-        <div className="flex-1 overflow-y-auto bg-gray-100 p-4" onClick={() => setSelectedBlockId(null)}>
+        <div className={`${mobilePanel === 'edit' ? 'flex flex-col w-full' : 'hidden'} md:flex md:flex-col md:w-auto flex-1 overflow-y-auto bg-gray-100 p-3 md:p-4`} onClick={() => setSelectedBlockId(null)}>
           <div className="mx-auto max-w-2xl space-y-2">
             {sortedBlocks.map((block, idx) => (
               <div
@@ -2202,13 +2232,13 @@ export default function TemplateEditPage() {
         </div>
 
         {/* 右パネル: A4プレビュー */}
-        <div className="w-[35%] shrink-0 overflow-y-auto border-l border-slate-200 bg-gradient-to-b from-slate-100 to-slate-200/50 p-6">
+        <div className={`${mobilePanel === 'preview' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-[35%] shrink-0 overflow-y-auto border-l border-slate-200 bg-gradient-to-b from-slate-100 to-slate-200/50 p-4 md:p-6`}>
           <PagePreview blocks={sortedBlocks} seals={seals} pageSize={pageSize} pageOrientation={pageOrientation} pageMargin={pageMargin} />
         </div>
       </div>
 
-      {/* フッター */}
-      <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2.5">
+      {/* フッター - モバイルでは非表示（ヘッダーに保存ボタンあり） */}
+      <div className="hidden md:flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2.5">
         <Button asChild variant="outline" size="sm">
           <Link href="/templates">
             <ChevronLeft className="mr-1 h-4 w-4" />

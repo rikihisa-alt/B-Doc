@@ -23,7 +23,8 @@ import {
   NumberFormat,
 } from 'docx'
 import { saveAs } from 'file-saver'
-import type { TemplateBlock, LocalSettings } from '@/lib/store'
+import type { TemplateBlock, LocalSettings, PageSize } from '@/lib/store'
+import { PAGE_SIZE_DIMENSIONS } from '@/lib/store'
 
 // =============================================================================
 // 型定義
@@ -45,6 +46,12 @@ export interface DocxExportParams {
   companySettings?: LocalSettings
   /** 変数置換関数 */
   replaceVars: (text: string, values: Record<string, string>, settings?: LocalSettings) => string
+  /** 用紙サイズ */
+  pageSize?: PageSize
+  /** 用紙方向 */
+  pageOrientation?: 'portrait' | 'landscape'
+  /** ページ余白 (mm) */
+  pageMargin?: { top: number; bottom: number; left: number; right: number }
 }
 
 // =============================================================================
@@ -464,6 +471,9 @@ export async function exportToDocx(params: DocxExportParams): Promise<void> {
     creationDate,
     companySettings,
     replaceVars: replaceVarsFn,
+    pageSize = 'A4',
+    pageOrientation = 'portrait',
+    pageMargin = { top: 20, bottom: 20, left: 20, right: 20 },
   } = params
 
   // ブロックを order 順にソート
@@ -485,15 +495,22 @@ export async function exportToDocx(params: DocxExportParams): Promise<void> {
       {
         properties: {
           page: {
-            size: {
-              width: 11906, // A4 幅 (210mm) in twips
-              height: 16838, // A4 高さ (297mm) in twips
-            },
+            size: (() => {
+              // mm を twips に変換 (1mm = 56.7 twips)
+              const mmToTwips = (mm: number) => Math.round(mm * 56.7)
+              const dims = PAGE_SIZE_DIMENSIONS[pageSize] ?? PAGE_SIZE_DIMENSIONS.A4
+              const w = pageOrientation === 'landscape' ? dims.height : dims.width
+              const h = pageOrientation === 'landscape' ? dims.width : dims.height
+              return {
+                width: mmToTwips(w),
+                height: mmToTwips(h),
+              }
+            })(),
             margin: {
-              top: 1134, // 20mm in twips
-              right: 1134,
-              bottom: 1134,
-              left: 1134,
+              top: Math.round(pageMargin.top * 56.7),
+              right: Math.round(pageMargin.right * 56.7),
+              bottom: Math.round(pageMargin.bottom * 56.7),
+              left: Math.round(pageMargin.left * 56.7),
             },
           },
         },

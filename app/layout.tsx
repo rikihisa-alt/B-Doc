@@ -16,6 +16,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja" className="h-full">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      </head>
       <body className={`${inter.className} h-full antialiased`}>
         {children}
       </body>

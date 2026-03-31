@@ -18,9 +18,11 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Download,
   X,
   FileText,
+  Filter,
 } from 'lucide-react'
 
 // ページあたりの表示件数
@@ -51,6 +53,9 @@ export default function DocumentsPage() {
   // ソート
   const [sortField, setSortField] = useState('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  // モバイル用フィルタ表示制御
+  const [showMobileFilters, setShowMobileFilters] = useState(false)
 
   useEffect(() => {
     setAllDocuments(getDocuments())
@@ -198,22 +203,39 @@ export default function DocumentsPage() {
     <div className="space-y-5 animate-fade-in">
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">文書一覧</h1>
-          <span className="inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-600 tabular-nums">
+        <div className="flex items-center gap-2 md:gap-3">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">文書一覧</h1>
+          <span className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-0.5 md:px-2.5 md:py-1 text-xs md:text-sm font-semibold text-slate-600 tabular-nums">
             {totalCount}<span className="ml-0.5 text-xs font-normal text-slate-400">件</span>
           </span>
         </div>
-        <Link href="/documents/new/select-template">
-          <Button size="sm" className="gap-1.5 shadow-sm">
-            <Plus className="h-4 w-4" />
-            新規作成
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* モバイル用フィルタトグル */}
+          <button
+            type="button"
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+            className="flex md:hidden min-h-[44px] items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600"
+          >
+            <Filter className="h-4 w-4" />
+            <ChevronDown className={`h-3 w-3 transition-transform ${showMobileFilters ? 'rotate-180' : ''}`} />
+          </button>
+          {/* デスクトップ用新規作成ボタン */}
+          <Link href="/documents/new/select-template" className="hidden md:block">
+            <Button size="sm" className="gap-1.5 shadow-sm">
+              <Plus className="h-4 w-4" />
+              新規作成
+            </Button>
+          </Link>
+        </div>
       </div>
 
-      {/* フィルタバー */}
-      <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/50 p-5 shadow-sm">
+      {/* モバイル用FAB（新規作成） */}
+      <Link href="/documents/new/select-template" className="md:hidden mobile-fab">
+        <Plus className="h-6 w-6" />
+      </Link>
+
+      {/* フィルタバー - モバイルでは折りたたみ */}
+      <div className={`rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/50 p-4 md:p-5 shadow-sm ${showMobileFilters ? 'block' : 'hidden md:block'}`}>
         <form onSubmit={handleSearch}>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7">
             {/* 文書番号 */}
@@ -325,13 +347,44 @@ export default function DocumentsPage() {
         </form>
       </div>
 
-      {/* 文書テーブル */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* モバイル用カードリスト */}
+      <div className="space-y-3 md:hidden">
+        {pageDocuments.length > 0 ? (
+          pageDocuments.map((doc) => (
+            <Link key={doc.id} href={`/documents/${doc.id}`}>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors active:bg-blue-50/40 min-h-[44px]">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900">{doc.title}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {DOCUMENT_TYPE_LABELS[doc.document_type] ?? doc.document_type}
+                    </p>
+                  </div>
+                  <StatusBadge status={doc.status as DocumentStatus} />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
+                  <span className="font-mono">{doc.document_number ?? '未採番'}</span>
+                  <span>{new Date(doc.created_at).toLocaleDateString('ja-JP')}</span>
+                </div>
+              </div>
+            </Link>
+          ))
+        ) : (
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white py-16">
+            <FileText className="h-12 w-12 text-slate-200 empty-state-icon" />
+            <p className="text-sm font-medium text-slate-500">
+              {hasFilters ? '条件に一致する文書がありません' : '文書がまだありません'}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* デスクトップ用文書テーブル */}
+      <div className="hidden md:block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm table-zebra">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                {/* 文書番号 */}
                 <th className="px-3 py-2.5 text-left">
                   <button
                     type="button"
@@ -341,7 +394,6 @@ export default function DocumentsPage() {
                     文書番号{sortIndicator('document_number')}
                   </button>
                 </th>
-                {/* 種別 */}
                 <th className="px-3 py-2.5 text-left">
                   <button
                     type="button"
@@ -351,11 +403,9 @@ export default function DocumentsPage() {
                     種別{sortIndicator('document_type')}
                   </button>
                 </th>
-                {/* タイトル */}
                 <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                   タイトル
                 </th>
-                {/* ステータス */}
                 <th className="px-3 py-2.5 text-left">
                   <button
                     type="button"
@@ -365,7 +415,6 @@ export default function DocumentsPage() {
                     ステータス{sortIndicator('status')}
                   </button>
                 </th>
-                {/* 作成日 */}
                 <th className="px-3 py-2.5 text-left">
                   <button
                     type="button"
@@ -375,7 +424,6 @@ export default function DocumentsPage() {
                     作成日{sortIndicator('created_at')}
                   </button>
                 </th>
-                {/* 操作 */}
                 <th className="w-32 px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500">
                   操作
                 </th>

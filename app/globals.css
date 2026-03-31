@@ -218,3 +218,83 @@
   background: inherit;
   animation: badgePing 2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
+
+/* =============================================================================
+ * モバイルレスポンシブ用スタイル
+ * ============================================================================= */
+
+/* モバイル用ボトムバー */
+@layer components {
+  .mobile-bottom-bar {
+    @apply fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* iPhone ノッチ対応のセーフエリアパディング */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* モバイルパネル切替のトランジション */
+@layer utilities {
+  .mobile-panel-transition {
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+  }
+}
+
+/* モバイルスライドアップシート */
+@keyframes slideUpSheet {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideDownSheet {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+@layer utilities {
+  .animate-slide-up-sheet {
+    animation: slideUpSheet 0.3s ease-out forwards;
+  }
+  .animate-slide-down-sheet {
+    animation: slideDownSheet 0.2s ease-out forwards;
+  }
+}
+
+/* モバイル用フローティングアクションボタン */
+@layer components {
+  .mobile-fab {
+    @apply fixed z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg;
+    bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+    right: 1rem;
+  }
+  .mobile-fab:active {
+    @apply bg-blue-700 scale-95;
+  }
+}
+
+/* モバイル時のコンテンツ下部余白（ボトムバー分） */
+@media (max-width: 767px) {
+  .mobile-content-padding {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+}

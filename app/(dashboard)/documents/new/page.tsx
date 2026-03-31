@@ -39,11 +39,13 @@ import {
   Globe,
   ClipboardCopy,
   Loader2,
-  Printer,
   Check,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { exportToDocx } from '@/lib/export/docx'
 import { exportToHtml } from '@/lib/export/html'
+import { exportToPdf } from '@/lib/export/pdf'
 
 // =============================================================================
 // 会社情報変数マッピング
@@ -321,6 +323,8 @@ export default function NewDocumentPage() {
   const [isExportOpen, setIsExportOpen] = useState(false)
   // クリップボードコピー完了フラグ
   const [clipboardCopied, setClipboardCopied] = useState(false)
+  // エクスポート成功トースト
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null)
   // エクスポートドロップダウンの参照
   const exportDropdownRef = useRef<HTMLDivElement>(null)
   // 読み込み中
@@ -329,6 +333,8 @@ export default function NewDocumentPage() {
   const [companySettings, setCompanySettings] = useState<LocalSettings | null>(null)
   // 自動入力されたキーのセット
   const [autoFilledKeys, setAutoFilledKeys] = useState<Set<string>>(new Set())
+  // モバイル用プレビュー表示切替
+  const [showMobilePreview, setShowMobilePreview] = useState(false)
 
   // PDF出力情報フィールド
   const [docTitle, setDocTitle] = useState('')
@@ -494,7 +500,7 @@ export default function NewDocumentPage() {
     }
   }, [template, formValues, validateAll, docTitle, creatorName, creationDate])
 
-  // PDF 出力（印刷ダイアログ）
+  // PDF 出力（html2canvas + jsPDF で直接ダウンロード）
   const handleExportPdf = useCallback(async () => {
     if (!template) return
     setIsGenerating(true)
@@ -503,121 +509,26 @@ export default function NewDocumentPage() {
       const ok = await prepareExport('PDF')
       if (!ok) return
 
-      const finalTitle = docTitle.trim() || template.name
-      const previewEl = document.getElementById('a4-preview-content')
-      if (!previewEl) return
+      await exportToPdf({
+        elementId: 'a4-preview-content',
+        docTitle: docTitle.trim() || template.name,
+        creatorName: creatorName.trim(),
+        creationDate,
+        pageSize: template.pageSize,
+        pageOrientation: template.pageOrientation,
+        pageMargin: template.pageMargin,
+      })
 
-      const printWindow = window.open('', '_blank', 'width=800,height=1000')
-      if (!printWindow) {
-        alert('ポップアップがブロックされました。許可してください。')
-        return
-      }
-
-      printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>${finalTitle}</title>
-<style>
-  @page {
-    size: ${(() => {
-      const ps = template.pageSize ?? 'A4'
-      const dims = PAGE_SIZE_DIMENSIONS[ps] ?? PAGE_SIZE_DIMENSIONS.A4
-      const w = template.pageOrientation === 'landscape' ? dims.height : dims.width
-      const h = template.pageOrientation === 'landscape' ? dims.width : dims.height
-      return `${w}mm ${h}mm`
-    })()};
-    margin: ${(() => {
-      const m = template.pageMargin ?? { top: 20, bottom: 20, left: 20, right: 20 }
-      return `${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm`
-    })()};
-    @top-left { content: "${finalTitle}"; font-size: 9px; color: #888; }
-    @top-right { content: "作成者: ${creatorName.trim()}"; font-size: 9px; color: #888; }
-    @bottom-center { content: counter(page) " / " counter(pages); font-size: 9px; color: #888; }
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
-    font-size: 12px;
-    color: #1a1a1a;
-    line-height: 1.6;
-  }
-  /* ヘッダー・フッター（ブラウザ互換用） */
-  .print-header {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    padding: 0 0 8px 0;
-    border-bottom: 1px solid #ddd;
-    font-size: 9px;
-    color: #888;
-    display: flex;
-    justify-content: space-between;
-  }
-  .print-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 8px 0 0 0;
-    border-top: 1px solid #ddd;
-    font-size: 9px;
-    color: #888;
-    text-align: center;
-  }
-  .print-content {
-    margin-top: 24px;
-    margin-bottom: 24px;
-  }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #666; padding: 4px 8px; text-align: left; }
-  th { background: #f0f0f0; font-weight: 600; }
-  hr { border: none; border-top: 1px solid #999; margin: 8px 0; }
-  .text-center { text-align: center; }
-  .text-right { text-align: right; }
-  .text-left { text-align: left; }
-  .font-bold { font-weight: bold; }
-  .font-medium { font-weight: 500; }
-  .font-semibold { font-weight: 600; }
-  .my-1 { margin: 4px 0; }
-  .my-2 { margin: 8px 0; }
-  .my-3 { margin: 12px 0; }
-  .my-4 { margin: 16px 0; }
-  .whitespace-pre-wrap { white-space: pre-wrap; }
-  h1 { font-size: 20px; margin: 8px 0; }
-  h2 { font-size: 17px; margin: 8px 0; }
-  h3 { font-size: 15px; margin: 8px 0; }
-  @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  }
-</style>
-</head>
-<body>
-<div class="print-header">
-  <span>${finalTitle}</span>
-  <span>作成者: ${creatorName.trim()}</span>
-</div>
-<div class="print-footer">
-  作成日: ${creationDate}
-</div>
-<div class="print-content">
-${previewEl.innerHTML}
-</div>
-</body>
-</html>`)
-      printWindow.document.close()
-
-      setTimeout(() => {
-        printWindow.print()
-      }, 500)
+      // 成功トースト表示
+      setExportSuccess('PDFファイルをダウンロードしました')
+      setTimeout(() => setExportSuccess(null), 3000)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'PDF出力に失敗しました'
       alert(message)
     } finally {
       setIsGenerating(false)
     }
-  }, [template, formValues, prepareExport, docTitle, creatorName, creationDate])
+  }, [template, prepareExport, docTitle, creatorName, creationDate])
 
   // Word(.docx) エクスポート
   const handleExportDocx = useCallback(async () => {
@@ -636,7 +547,14 @@ ${previewEl.innerHTML}
         creationDate,
         companySettings: companySettings ?? undefined,
         replaceVars,
+        pageSize: template.pageSize,
+        pageOrientation: template.pageOrientation,
+        pageMargin: template.pageMargin,
       })
+
+      // 成功トースト表示
+      setExportSuccess('Wordファイルをダウンロードしました')
+      setTimeout(() => setExportSuccess(null), 3000)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Word出力に失敗しました'
       alert(message)
@@ -659,6 +577,10 @@ ${previewEl.innerHTML}
         creatorName: creatorName.trim(),
         creationDate,
       })
+
+      // 成功トースト表示
+      setExportSuccess('HTMLファイルをダウンロードしました')
+      setTimeout(() => setExportSuccess(null), 3000)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'HTML出力に失敗しました'
       alert(message)
@@ -808,26 +730,35 @@ ${previewEl.innerHTML}
   return (
     <div className="flex h-[calc(100vh-6rem)] flex-col">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between border-b bg-white px-6 py-3">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between border-b bg-white px-3 md:px-6 py-2 md:py-3">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
           <Link href="/documents/new/select-template">
             <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
               <ChevronLeft className="h-4 w-4" />
-              テンプレート選択に戻る
+              <span className="hidden md:inline">テンプレート選択に戻る</span>
             </Button>
           </Link>
-          <div className="h-5 w-px bg-gray-200" />
-          <h1 className="text-base font-semibold text-gray-900">
+          <div className="hidden md:block h-5 w-px bg-gray-200" />
+          <h1 className="truncate text-sm md:text-base font-semibold text-gray-900">
             {template.name}
-            <span className="ml-2 text-sm font-normal text-gray-500">作成中</span>
+            <span className="ml-1 md:ml-2 text-xs md:text-sm font-normal text-gray-500">作成中</span>
           </h1>
         </div>
+        {/* モバイル用プレビュー切替ボタン */}
+        <button
+          type="button"
+          onClick={() => setShowMobilePreview(!showMobilePreview)}
+          className="flex md:hidden min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600"
+        >
+          {showMobilePreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {showMobilePreview ? 'フォーム' : 'プレビュー'}
+        </button>
       </div>
 
-      {/* メインコンテンツ: 2カラム */}
+      {/* メインコンテンツ: 2カラム（デスクトップ） / 1カラム切替（モバイル） */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* 左パネル: 入力フォーム (40%) */}
-        <div className="w-2/5 overflow-y-auto border-r bg-gray-50/50 p-6">
+        <div className={`${showMobilePreview ? 'hidden md:block' : 'block'} w-full md:w-2/5 overflow-y-auto border-r bg-gray-50/50 p-4 md:p-6`}>
           <div className="mx-auto max-w-md space-y-5">
             {/* PDF出力情報セクション */}
             <div className="rounded-xl border-2 border-blue-200 bg-gradient-to-b from-blue-50 to-blue-50/30 p-5 space-y-4 shadow-sm">
@@ -1000,7 +931,7 @@ ${previewEl.innerHTML}
         </div>
 
         {/* 右パネル: ライブプレビュー (60%) */}
-        <div className="w-3/5 overflow-y-auto bg-gradient-to-b from-slate-200/60 to-slate-300/30 p-8">
+        <div className={`${showMobilePreview ? 'block' : 'hidden md:block'} w-full md:w-3/5 overflow-y-auto bg-gradient-to-b from-slate-200/60 to-slate-300/30 p-4 md:p-8`}>
           {/* ページサイズ表示 */}
           {template && (
             <div className="mb-2 text-center text-[10px] text-slate-400">
@@ -1059,8 +990,8 @@ ${previewEl.innerHTML}
       </div>
 
       {/* フッター（スティッキーバー） */}
-      <div className="flex items-center justify-between border-t bg-white px-6 py-3.5 sticky-bar-shadow">
-        <Link href="/documents/new/select-template">
+      <div className="flex items-center justify-between border-t bg-white px-3 md:px-6 py-2.5 md:py-3.5 sticky-bar-shadow safe-area-bottom">
+        <Link href="/documents/new/select-template" className="hidden md:block">
           <Button variant="outline" className="text-gray-600">
             <ChevronLeft className="mr-1.5 h-4 w-4" />
             テンプレート選択に戻る
@@ -1092,10 +1023,10 @@ ${previewEl.innerHTML}
                 onClick={handleExportPdf}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                <Printer className="h-4 w-4 text-blue-500 shrink-0" />
+                <FileDown className="h-4 w-4 text-blue-500 shrink-0" />
                 <div>
                   <div className="font-medium">PDF出力</div>
-                  <div className="text-xs text-gray-400">印刷ダイアログを開く</div>
+                  <div className="text-xs text-gray-400">PDFファイルをダウンロード</div>
                 </div>
               </button>
 
@@ -1156,6 +1087,14 @@ ${previewEl.innerHTML}
         <div className="fixed bottom-20 right-6 z-50 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm text-white shadow-lg animate-in slide-in-from-bottom-2">
           <Check className="h-4 w-4" />
           クリップボードにコピーしました
+        </div>
+      )}
+
+      {/* エクスポート成功トースト */}
+      {exportSuccess && (
+        <div className="fixed bottom-20 right-6 z-50 flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm text-white shadow-lg animate-in slide-in-from-bottom-2">
+          <Check className="h-4 w-4" />
+          {exportSuccess}
         </div>
       )}
     </div>

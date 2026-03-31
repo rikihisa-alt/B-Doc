@@ -26,6 +26,7 @@ import {
   GitBranch,
   FilePlus,
   UserCog,
+  Menu,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -375,6 +376,127 @@ const ROLE_BADGE_COLORS: Record<UserRoleType, string> = {
 }
 
 // =============================================================================
+// モバイル用ボトムタブバー
+// =============================================================================
+
+/** モバイルタブ項目の型 */
+interface MobileTabItem {
+  id: string
+  icon: LucideIcon
+  href: string
+}
+
+/** モバイルボトムタブバーの5項目（ダッシュボード、文書、テンプレート、承認、メニュー） */
+const MOBILE_TABS: MobileTabItem[] = [
+  { id: 'dashboard', icon: Home, href: '/dashboard' },
+  { id: 'documents', icon: FileText, href: '/documents' },
+  { id: 'templates', icon: Layout, href: '/templates' },
+  { id: 'approvals', icon: CheckSquare, href: '/approvals' },
+  { id: 'more', icon: Menu, href: '' },
+]
+
+/** スライドアップシートに表示する残りのメニュー項目 */
+const MORE_MENU_ITEMS: SubMenuItem[] = [
+  { icon: Database, label: 'マスタ管理', href: '/master' },
+  { icon: Stamp, label: '印影管理', href: '/master/seals' },
+  { icon: Shield, label: '監査ログ', href: '/audit-logs' },
+  { icon: Settings, label: '設定', href: '/settings' },
+  { icon: Lock, label: '権限管理', href: '/settings/permissions' },
+  { icon: FilePlus, label: '新規文書作成', href: '/documents/new/select-template' },
+]
+
+/** モバイル用ボトムタブバーコンポーネント */
+function MobileBottomTabBar({ pathname }: { pathname: string }) {
+  const [showMoreSheet, setShowMoreSheet] = useState(false)
+
+  /** タブがアクティブかどうか */
+  const isTabActive = useCallback((tab: MobileTabItem): boolean => {
+    if (tab.id === 'more') return false
+    if (tab.href === '/dashboard') return pathname === '/dashboard'
+    return pathname === tab.href || pathname.startsWith(tab.href + '/')
+  }, [pathname])
+
+  return (
+    <>
+      {/* ボトムタブバー */}
+      <div className="mobile-bottom-bar md:hidden">
+        <nav className="flex items-center justify-around px-2 py-1">
+          {MOBILE_TABS.map((tab) => {
+            const active = isTabActive(tab)
+            if (tab.id === 'more') {
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setShowMoreSheet(true)}
+                  className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-1 transition-colors"
+                >
+                  <tab.icon className="h-5 w-5 text-slate-400" strokeWidth={1.75} />
+                </button>
+              )
+            }
+            return (
+              <Link
+                key={tab.id}
+                href={tab.href}
+                className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-1 transition-colors"
+              >
+                <tab.icon
+                  className={cn('h-5 w-5', active ? 'text-blue-600' : 'text-slate-400')}
+                  strokeWidth={active ? 2.25 : 1.75}
+                />
+                {/* アクティブインジケーター（青いドット） */}
+                {active && (
+                  <div className="h-1 w-1 rounded-full bg-blue-600" />
+                )}
+              </Link>
+            )
+          })}
+        </nav>
+      </div>
+
+      {/* スライドアップシート（メニュー） */}
+      {showMoreSheet && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          {/* オーバーレイ */}
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setShowMoreSheet(false)}
+          />
+          {/* シートコンテンツ */}
+          <div className="absolute bottom-0 left-0 right-0 animate-slide-up-sheet rounded-t-2xl bg-white safe-area-bottom">
+            {/* ハンドル */}
+            <div className="flex justify-center py-3">
+              <div className="h-1 w-10 rounded-full bg-slate-300" />
+            </div>
+            <div className="px-4 pb-4">
+              <h3 className="mb-3 text-sm font-semibold text-slate-500">メニュー</h3>
+              <div className="space-y-1">
+                {MORE_MENU_ITEMS.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setShowMoreSheet(false)}
+                    className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 transition-colors active:bg-blue-50"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                      <item.icon className="h-4 w-4" strokeWidth={1.75} />
+                    </span>
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+            {/* セーフエリア分の余白 */}
+            <div className="h-2" />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// =============================================================================
 // メインコンポーネント: TopNavbar
 // =============================================================================
 
@@ -563,7 +685,11 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
   // =========================================================================
 
   return (
-    <header className="flex h-14 items-center border-b border-slate-200 bg-white px-4">
+    <>
+    {/* モバイル用ボトムタブバー */}
+    <MobileBottomTabBar pathname={pathname} />
+
+    <header className="hidden md:flex h-14 items-center border-b border-slate-200 bg-white px-4">
       {/* ロゴ（左端固定、ドラッグ不可） */}
       <Link
         href="/dashboard"
@@ -705,5 +831,6 @@ export function TopNavbar({ userName: _userName, userRole: _userRole }: TopNavba
         </div>
       </div>
     </header>
+    </>
   )
 }

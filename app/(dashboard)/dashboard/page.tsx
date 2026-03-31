@@ -144,8 +144,8 @@ export default function DashboardPage() {
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">ダッシュボード</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">ダッシュボード</h1>
+          <p className="mt-1 text-xs md:text-sm text-gray-500">
             {new Date().toLocaleDateString('ja-JP', {
               year: 'numeric',
               month: 'long',
@@ -154,7 +154,7 @@ export default function DashboardPage() {
             })}
           </p>
         </div>
-        <Link href="/documents/new/select-template">
+        <Link href="/documents/new/select-template" className="hidden md:block">
           <Button className="gap-2 shadow-sm">
             <Plus className="h-4 w-4" />
             新規文書作成
@@ -163,11 +163,11 @@ export default function DashboardPage() {
       </div>
 
       {/* アクション待ち件数カード */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
         {actionItems.map((item) => (
           <Link key={item.label} href={item.href}>
             <div
-              className={`rounded-xl border p-5 transition-all duration-200 card-hover ${item.bgColor} ${item.borderColor} ${item.hoverBg} ${item.urgent ? 'ring-2 ring-red-200 shadow-sm' : ''}`}
+              className={`rounded-xl border p-4 md:p-5 transition-all duration-200 card-hover min-h-[44px] ${item.bgColor} ${item.borderColor} ${item.hoverBg} ${item.urgent ? 'ring-2 ring-red-200 shadow-sm' : ''}`}
             >
               <div className="flex items-center gap-3">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${item.iconBg}`}>
@@ -175,7 +175,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <span className={`text-xs font-medium ${item.color}`}>{item.label}</span>
-                  <p className={`text-3xl font-bold tabular-nums leading-tight ${item.color}`}>
+                  <p className={`text-2xl md:text-3xl font-bold tabular-nums leading-tight ${item.color}`}>
                     {item.count}<span className="ml-1 text-sm font-normal opacity-70">件</span>
                   </p>
                 </div>
@@ -186,7 +186,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 統計サマリー */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4">
         <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50">
             <TrendingUp className="h-5 w-5 text-indigo-600" />
@@ -207,9 +207,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* 最近の文書テーブル（2/3幅） */}
-        <div className="col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
               <FileText className="h-4 w-4 text-slate-400" />
@@ -277,8 +277,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 最近の操作タイムライン（1/3幅） */}
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        {/* 最近の操作タイムライン（1/3幅）- モバイルでは非表示 */}
+        <div className="hidden lg:block rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
             <Activity className="h-4 w-4 text-slate-400" />
             <h2 className="text-sm font-semibold text-gray-900">最近の操作</h2>
@@ -328,8 +328,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* クイックアクション */}
-      <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      {/* クイックアクション - モバイルでは非表示 */}
+      <div className="hidden md:flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
         <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">クイックアクション</span>
         <div className="mx-1 h-5 w-px bg-gray-200" />
         <Link href="/documents/new/select-template">

@@ -318,8 +318,8 @@ export default function TemplatesPage() {
       {/* ページヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">テンプレート管理</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900">テンプレート管理</h1>
+          <p className="mt-1 text-xs md:text-sm text-slate-500">
             文書テンプレートの作成・承認・管理を行います
             <span className="ml-2 inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200/80">
               {USER_ROLE_TYPE_LABELS[userRole]}
@@ -327,8 +327,8 @@ export default function TemplatesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* 表示モード切替ボタン */}
-          <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
+          {/* 表示モード切替ボタン - デスクトップのみ */}
+          <div className="hidden md:flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
             <button
               onClick={() => handleViewModeChange('card')}
               className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
@@ -354,7 +354,7 @@ export default function TemplatesPage() {
               <span className="hidden sm:inline">リスト</span>
             </button>
           </div>
-          <Button asChild className="gap-2 shadow-sm">
+          <Button asChild className="gap-2 shadow-sm hidden md:inline-flex">
             <Link href="/templates/new">
               <Plus className="h-4 w-4" />
               新規テンプレート
@@ -363,8 +363,13 @@ export default function TemplatesPage() {
         </div>
       </div>
 
+      {/* モバイル用FAB */}
+      <Link href="/templates/new" className="md:hidden mobile-fab">
+        <Plus className="h-6 w-6" />
+      </Link>
+
       {/* サマリーカード */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <Card>
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
@@ -447,13 +452,13 @@ export default function TemplatesPage() {
       {templates.length > 0 ? (
         viewMode === 'card' ? (
           /* カード表示 */
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => {
               const status = getStatus(template)
               return (
                 <Card key={template.id} className={`group overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-l-4 ${TEMPLATE_CARD_BORDER[status]}`}>
                   {/* ミニプレビュー */}
-                  <div className="relative h-32 border-b border-slate-100 bg-slate-50">
+                  <div className="relative h-24 md:h-32 border-b border-slate-100 bg-slate-50">
                     <TemplateMiniPreview template={template} />
                     {/* ホバー時のオーバーレイ */}
                     <div className="absolute inset-0 flex items-center justify-center gap-2 bg-white/80 opacity-0 transition-opacity group-hover:opacity-100">
